@@ -25,6 +25,11 @@ style.layer('row-formatting', (row, run, caret, viewport, include) => {
       background.mergable = true
     })
   })
+
+  // Make notes lighter, like code comments
+  row('.note', (context, row) => {
+    row.text.color = row.text.color.withAlpha(0.5)
+  })
 })
 
 style.layer('run-formatting', (row, run, caret, viewport, include) => {
