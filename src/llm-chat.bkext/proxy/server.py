@@ -108,10 +108,10 @@ def stream_from_anthropic(session_id, messages, api_key, model, max_tokens):
     """Stream from Anthropic API and buffer chunks."""
     print(f"[Proxy] Session {session_id}: Starting Anthropic stream")
     try:
-        # Separate system messages
+        # Separate system messages - use only the last one (lowest in document)
         system_messages = [m for m in messages if m.get("role") == "system"]
         conversation = [m for m in messages if m.get("role") != "system"]
-        system_prompt = "\n\n".join(m.get("content", "") for m in system_messages)
+        system_prompt = system_messages[-1].get("content", "") if system_messages else ""
 
         # Build request body
         body = {
@@ -177,10 +177,10 @@ def stream_from_anthropic(session_id, messages, api_key, model, max_tokens):
 
 
 if __name__ == "__main__":
-    print(f"🚀 LLM Chat Proxy starting on http://localhost:{PORT}")
+    print(f"LLM Chat Proxy starting on http://localhost:{PORT}")
     print("   Press Ctrl+C to stop\n")
     server = HTTPServer(("localhost", PORT), ProxyHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n👋 Proxy stopped")
+        print("\nProxy stopped")
