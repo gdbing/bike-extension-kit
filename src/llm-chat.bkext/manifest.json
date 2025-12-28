@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "id": "llm-chat",
+  "name": "LLM Chat",
+  "version": "0.1.0",
+  "api_version": "0.0.0",
+  "permissions": [],
+  "host_permissions": ["https://api.anthropic.com/*", "http://127.0.0.1/*"],
+  "enabled": true,
+  "install": true
+}
