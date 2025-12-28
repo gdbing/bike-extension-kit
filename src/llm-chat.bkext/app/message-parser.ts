@@ -19,7 +19,7 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
   while (row) {
     // Skip note rows and all their descendants (treat as comments)
     if (row.type === 'note') {
-      if (row === stopRow || isDescendant(stopRow, row)) {
+      if (isSameRow(row, stopRow) || isDescendant(stopRow, row)) {
         break
       }
       row = nextRowAfterSubtree(row)
@@ -51,7 +51,7 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
         currentMessage = { role, content: '' }
         markerRow = row
 
-        if (row === stopRow) {
+        if (isSameRow(row, stopRow)) {
           break
         }
 
@@ -65,7 +65,7 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
           markerRow = null
         }
 
-        if (row === stopRow) {
+        if (isSameRow(row, stopRow)) {
           break
         }
 
@@ -82,7 +82,7 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
       currentMessage.content += indent + text + '\n'
     }
 
-    if (row === stopRow) {
+    if (isSameRow(row, stopRow)) {
       break
     }
 
@@ -95,6 +95,14 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
   }
 
   return messages
+}
+
+/**
+ * Check if two rows are the same row.
+ * Compare by ID since Row objects may be different wrapper instances.
+ */
+function isSameRow(a: Row, b: Row): boolean {
+  return a.id === b.id
 }
 
 /**

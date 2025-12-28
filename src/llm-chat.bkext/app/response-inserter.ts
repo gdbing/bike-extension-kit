@@ -5,8 +5,14 @@ import { Outline, Row } from 'bike/app'
  * or create a new one.
  */
 function findOrCreateAssistantRow(outline: Outline, afterRow: Row): Row {
-  // Search for existing <assistant> row among siblings after current position
-  let searchRow: Row | undefined = afterRow.nextSibling
+  // Find the root-level row containing or equal to afterRow
+  let rootLevelRow: Row = afterRow
+  while (rootLevelRow.level > 1 && rootLevelRow.parent) {
+    rootLevelRow = rootLevelRow.parent
+  }
+
+  // Search for existing <assistant> row among root-level siblings
+  let searchRow: Row | undefined = rootLevelRow.nextSibling
 
   while (searchRow) {
     const text = searchRow.text.string.trim().toLowerCase()
@@ -20,12 +26,11 @@ function findOrCreateAssistantRow(outline: Outline, afterRow: Row): Row {
     searchRow = searchRow.nextSibling
   }
 
-  // Create new <assistant> row after current row
-  const parent = afterRow.parent || outline.root
+  // Create new <assistant> row at root level, after the current root-level row
   const newRows = outline.insertRows(
     [{ text: '<assistant>' }],
-    parent,
-    afterRow.nextSibling
+    outline.root,
+    rootLevelRow.nextSibling
   )
 
   return newRows[0]
