@@ -1,38 +1,13 @@
 import { AppExtensionContext, CommandContext } from 'bike/app'
 import { parseMessages } from './message-parser'
-import { AnthropicProvider } from './providers/anthropic'
+import { streamCompletion } from './providers/anthropic'
 import { streamResponseToOutline } from './response-inserter'
 
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
 
-// Cache API key in memory for session
-let cachedAPIKey: string | null = null
-
 // Prevent concurrent requests
 let isProcessing = false
-
-async function getAPIKey(): Promise<string | null> {
-  if (cachedAPIKey) return cachedAPIKey
-
-  // For MVP: use environment variable or prompt
-  // Check if there's a key in the frontmost outline's metadata
-  const editor = bike.frontmostOutlineEditor
-  if (editor) {
-    const storedKey = editor.outline.persistentMetadata.get('anthropic-api-key') as string | undefined
-    if (storedKey) {
-      cachedAPIKey = storedKey
-      return storedKey
-    }
-  }
-
-  // Prompt for key using basic prompt (if available)
-  // For now, check console for instructions
-  console.log('LLM Chat: No API key found. Set one with:')
-  console.log('  outline.persistentMetadata.set("anthropic-api-key", "sk-ant-...")')
-
-  return null
-}
 
 async function sendMessageCommand(context: CommandContext): Promise<boolean> {
   const editor = context.editor
@@ -67,20 +42,8 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
       return true
     }
 
-    // Get API key
-    const apiKey = await getAPIKey()
-    if (!apiKey) {
-      console.log('LLM Chat: API key required.')
-      return true
-    }
-
-    // Create provider and stream
-    const provider = new AnthropicProvider()
-    const tokenGenerator = provider.streamCompletion(messages, {
-      apiKey,
-      model: 'claude-3-5-haiku-20241022',
-      maxTokens: 4096
-    })
+    // Stream completion from server
+    const tokenGenerator = streamCompletion(messages)
 
     // Stream response into outline
     await streamResponseToOutline(editor.outline, selection.row, tokenGenerator)

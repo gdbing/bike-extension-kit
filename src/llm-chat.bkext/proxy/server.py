@@ -5,13 +5,18 @@ Local streaming proxy for Bike LLM Chat extension.
 Run with: python3 server.py
 Then use the extension with Cmd+Shift+Return
 
-The extension polls this server for streamed chunks from the Anthropic API.
+API keys are retrieved from:
+1. Simon Willison's `llm` CLI tool (llm keys get <provider>)
+2. Environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
 """
 
 import json
+import os
+import subprocess
 import threading
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
@@ -19,13 +24,71 @@ from urllib.error import HTTPError
 sessions = {}
 sessions_lock = threading.Lock()
 
+# Cache for API keys
+api_key_cache = {}
+
 PORT = 3033
+
+# Default model
+DEFAULT_MODEL = "claude-3-5-haiku-20241022"
+
+
+def get_api_key(provider: str) -> Optional[str]:
+    """
+    Get API key for a provider.
+
+    Tries in order:
+    1. Cached value
+    2. `llm keys get <provider>` CLI command
+    3. Environment variable (e.g., ANTHROPIC_API_KEY)
+    """
+    # Check cache
+    if provider in api_key_cache:
+        return api_key_cache[provider]
+
+    # Try llm CLI
+    try:
+        result = subprocess.run(
+            ["llm", "keys", "get", provider],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        key = result.stdout.strip()
+        if key:
+            api_key_cache[provider] = key
+            print(f"[Keys] Got {provider} key from llm CLI")
+            return key
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Try environment variable
+    env_var = f"{provider.upper()}_API_KEY"
+    key = os.environ.get(env_var)
+    if key:
+        api_key_cache[provider] = key
+        print(f"[Keys] Got {provider} key from {env_var}")
+        return key
+
+    print(f"[Keys] No API key found for {provider}")
+    return None
+
+
+def get_provider_for_model(model: str) -> str:
+    """Determine the provider based on model name."""
+    model_lower = model.lower()
+    if "claude" in model_lower or "haiku" in model_lower or "sonnet" in model_lower or "opus" in model_lower:
+        return "anthropic"
+    elif "gpt" in model_lower or "o1" in model_lower:
+        return "openai"
+    # Default to anthropic
+    return "anthropic"
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         # Quieter logging
-        print(f"[Proxy] {args[0]}")
+        print(f"[Server] {args[0]}")
 
     def send_json(self, data, status=200):
         self.send_response(status)
@@ -47,17 +110,24 @@ class ProxyHandler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(content_length))
 
             messages = body.get("messages", [])
-            api_key = body.get("apiKey", "")
-            model = body.get("model", "claude-3-5-haiku-20241022")
+            model = body.get("model", DEFAULT_MODEL)
             max_tokens = body.get("maxTokens", 4096)
 
+            # Determine provider and get API key
+            provider = get_provider_for_model(model)
+            api_key = get_api_key(provider)
+
             if not api_key:
-                self.send_json({"error": "No API key provided"}, 400)
+                self.send_json({
+                    "error": f"No API key found for {provider}. "
+                             f"Set it with `llm keys set {provider}` or "
+                             f"export {provider.upper()}_API_KEY"
+                }, 400)
                 return
 
             # Create session
             session_id = str(uuid.uuid4())[:8]
-            print(f"[Proxy] New session: {session_id}")
+            print(f"[Server] New session: {session_id} (model: {model})")
             with sessions_lock:
                 sessions[session_id] = {"chunks": [], "done": False, "error": None}
 
@@ -106,7 +176,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 def stream_from_anthropic(session_id, messages, api_key, model, max_tokens):
     """Stream from Anthropic API and buffer chunks."""
-    print(f"[Proxy] Session {session_id}: Starting Anthropic stream")
+    print(f"[Server] Session {session_id}: Starting stream")
     try:
         # Separate system messages - use only the last one (lowest in document)
         system_messages = [m for m in messages if m.get("role") == "system"]
@@ -177,10 +247,10 @@ def stream_from_anthropic(session_id, messages, api_key, model, max_tokens):
 
 
 if __name__ == "__main__":
-    print(f"LLM Chat Proxy starting on http://localhost:{PORT}")
+    print(f"LLM Chat Server starting on http://localhost:{PORT}")
     print("   Press Ctrl+C to stop\n")
     server = HTTPServer(("localhost", PORT), ProxyHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nProxy stopped")
+        print("\nServer stopped")

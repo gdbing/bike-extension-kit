@@ -6,44 +6,36 @@ Chat with Claude directly in your Bike outlines.
 
 ### 1. Set your API key
 
-Set your Anthropic API key in the document's metadata. Open Safari's debugger (Develop > Bike 2) and run:
+The server retrieves API keys automatically from:
 
-```javascript
-bike.frontmostOutlineEditor.outline.persistentMetadata.set("anthropic-api-key", "sk-ant-your-key-here")
-```
+1. **Simon Willison's `llm` CLI** (recommended):
+   ```bash
+   llm keys set anthropic
+   # Paste your key when prompted
+   ```
 
-Or use AppleScript:
+2. **Environment variable** (fallback):
+   ```bash
+   export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+   ```
 
-```bash
-osascript -l JavaScript -e '
-Application("Bike").evaluate({
-  input: "sk-ant-your-key-here",
-  script: "(key) => { bike.frontmostOutlineEditor.outline.persistentMetadata.set(\"anthropic-api-key\", key); return \"API key set\"; }"
-})
-'
-```
-
-### 2. Enable streaming (optional but recommended)
-
-For streaming responses (text appears as it's generated), run the local proxy server:
+### 2. Start the server
 
 ```bash
 cd src/llm-chat.bkext/proxy
 python3 server.py
 ```
 
-The proxy runs on `http://localhost:3033`. Keep it running while using the extension.
-
-Without the proxy, responses still work but appear all at once after generation completes.
+The server runs on `http://localhost:3033`. Keep it running while using the extension.
 
 ## Usage
 
 1. Create message blocks using markers at the root level:
    - `<user>` - Your message to the LLM
    - `<system>` - System instructions
-   - `<assistant>` - Previous LLM responses (optional)
+   - `<assistant>` - Previous LLM responses (or any `<name>` marker)
 
-2. Place your cursor after your message content
+2. Nest your content under the markers (indented)
 
 3. Press `Cmd+Shift+Return` to send
 
@@ -63,20 +55,23 @@ After pressing `Cmd+Shift+Return`, an `<assistant>` block will be added with the
 
 ## Features
 
-- Streaming responses via local proxy (tokens appear as they arrive)
-- Falls back to non-streaming when proxy isn't running
+- Streaming responses (tokens appear as they arrive)
 - Conversation history (multiple user/assistant exchanges)
 - System prompts for custom behavior
-- Uses Claude 3.5 Haiku for fast responses
+- Note-type rows are treated as comments (excluded from messages)
+- Strict nesting: only indented content is included in messages
 
 ## Architecture
 
 ```
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
 │    Bike     │ poll │   Python    │stream│  Anthropic  │
-│  Extension  │<────>│   Proxy     │<────>│    API      │
+│  Extension  │<────>│   Server    │<────>│    API      │
 └─────────────┘      └─────────────┘      └─────────────┘
                      localhost:3033
 ```
 
-The proxy handles streaming from Anthropic and buffers chunks. The extension polls every 50ms for new chunks.
+The extension parses the document and sends messages to the server. The server:
+- Manages API keys (via `llm` CLI or environment variables)
+- Handles provider-specific logic (system message handling, etc.)
+- Streams responses back to the extension

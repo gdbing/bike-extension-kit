@@ -1,34 +1,48 @@
 # LLM Chat Extension - Development Status
 
-## Current State: Working MVP with Streaming
+## Current State: Refactored Architecture
 
-The extension is functional with streaming support via a local Python proxy.
-
-## What Works
-
-- **Command**: `llm-chat:send` triggered by `Cmd+Shift+Return`
-- **Message parsing**: Parses `<user>`, `<system>`, `<assistant>` markers at root level
-- **Streaming**: Via local Python proxy (polls every 50ms)
-- **Non-streaming fallback**: Works when proxy isn't running
-- **Concurrent request blocking**: Prevents double-sends
+Clean separation between extension (thin client) and server (smart backend).
 
 ## Architecture
 
 ```
-Extension (Bike)  ←→  Python Proxy (localhost:3033)  ←→  Anthropic API
-     poll                    stream
+Extension (Bike)  ←→  Python Server (localhost:3033)  ←→  Anthropic API
+     parse & poll           API keys & streaming
 ```
 
-Bike's fetch API doesn't support `ReadableStream`, so we use a local proxy to handle streaming and the extension polls for chunks.
+**Extension responsibilities:**
+- Parse document into messages
+- Send messages to server
+- Stream response back into outline
+
+**Server responsibilities:**
+- API key management (via `llm` CLI or env vars)
+- Provider routing (based on model name)
+- Handle provider-specific quirks (system messages, etc.)
+- Stream responses
+
+## What Works
+
+- **Command**: `llm-chat:send` triggered by `Cmd+Shift+Return`
+- **Message parsing**:
+  - `<user>`, `<system>` markers at root level
+  - Any other `<marker>` treated as assistant
+  - Strict nesting (only indented content included)
+  - Note-type rows skipped (treated as comments)
+- **Streaming**: Via local Python server (polls every 50ms)
+- **API keys**: Retrieved from `llm` CLI or environment variables
 
 ## Setup Required
 
-1. Set API key in document metadata:
-   ```javascript
-   bike.frontmostOutlineEditor.outline.persistentMetadata.set("anthropic-api-key", "sk-ant-...")
+1. Set API key (one of):
+   ```bash
+   llm keys set anthropic
+   # or
+   export ANTHROPIC_API_KEY="sk-ant-..."
    ```
 
-2. Start proxy for streaming:
+2. Start server:
    ```bash
    cd src/llm-chat.bkext/proxy
    python3 server.py
@@ -36,24 +50,19 @@ Bike's fetch API doesn't support `ReadableStream`, so we use a local proxy to ha
 
 ## Files
 
-- `manifest.json` - Extension config with host permissions
-- `app/main.ts` - Command registration, keybindings, orchestration
+- `manifest.json` - Extension config
+- `app/main.ts` - Command registration, keybindings
 - `app/message-parser.ts` - Parse outline into messages
 - `app/response-inserter.ts` - Stream tokens into outline rows
-- `app/providers/types.ts` - LLMProvider interface
-- `app/providers/anthropic.ts` - Anthropic API + proxy polling
-- `proxy/server.py` - Local streaming proxy server
+- `app/providers/types.ts` - Message and options types
+- `app/providers/anthropic.ts` - Server communication
+- `proxy/server.py` - Local server with API key management
+- `proxy/debug_server.py` - Debug server for parser testing
 
 ## Known Issues / TODO
 
-- [ ] Request streaming fetch support from Jesse (Bike developer) - would eliminate need for proxy
-- [ ] Better API key management (currently stored in document metadata)
+- [ ] Model selection (currently hardcoded to haiku)
+- [ ] Config message syntax for parameters (temperature, max_tokens)
 - [ ] Visual feedback while waiting for response
 - [ ] Cancel in-progress requests
-- [ ] Model selection UI
-
-## Testing Notes
-
-- Host permission pattern: `http://127.0.0.1/*` works, `localhost` and ports don't
-- Instance ID logging added for debugging duplicate requests
-- Proxy logs session IDs for debugging
+- [ ] Support for other providers (OpenAI, etc.)
