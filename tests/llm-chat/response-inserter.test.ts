@@ -120,3 +120,26 @@ test('inserts a new assistant after the marker when cursor is inside a note', ()
   assert.equal(second.children.length, 1)
   assert.equal(second.children[0].text.string, 'Assistant reply')
 })
+
+test('does not overwrite an existing assistant response after the current marker', () => {
+  const userRow = createRow('<user>')
+  const existingAssistant = createRow('<assistant>')
+  existingAssistant.children.push(createRow('Original reply', existingAssistant))
+
+  userRow.nextSibling = existingAssistant
+
+  const trailingRow = createRow('<user>')
+  existingAssistant.nextSibling = trailingRow
+
+  const outline = new FakeOutline([userRow, existingAssistant, trailingRow])
+
+  insertStaticResponse(outline as any, userRow as any, 'New reply')
+
+  const rootChildren = outline.root.children
+  assert.equal(rootChildren[0].text.string, '<user>')
+  assert.equal(rootChildren[1].text.string, '<assistant>')
+  assert.equal(rootChildren[1].children[0].text.string, 'New reply')
+  assert.equal(rootChildren[2].text.string, '<assistant>')
+  assert.equal(rootChildren[2].children[0].text.string, 'Original reply')
+  assert.equal(rootChildren[3].text.string, '<user>')
+})

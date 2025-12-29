@@ -12,18 +12,12 @@ function findOrCreateAssistantRow(outline: Outline, afterRow: Row): Row {
   }
 
   // Search for existing <assistant> row among root-level siblings
-  let searchRow: Row | undefined = rootLevelRow.nextSibling
-
-  while (searchRow) {
-    const text = searchRow.text.string.trim().toLowerCase()
-    if (text === '<assistant>') {
-      return searchRow
+  const nextSibling = rootLevelRow.nextSibling
+  if (nextSibling && nextSibling.text.string.trim().toLowerCase() === '<assistant>') {
+    // Reuse existing assistant only if it has no content to avoid clobbering later messages
+    if (nextSibling.children.length === 0) {
+      return nextSibling
     }
-    // Stop if we hit another marker
-    if (text === '<user>' || text === '<system>') {
-      break
-    }
-    searchRow = searchRow.nextSibling
   }
 
   // Create new <assistant> row at root level, after the current root-level row
@@ -38,10 +32,6 @@ function findOrCreateAssistantRow(outline: Outline, afterRow: Row): Row {
 
 function prepareAssistantRow(outline: Outline, afterRow: Row): Row {
   const assistantRow = findOrCreateAssistantRow(outline, afterRow)
-
-  if (assistantRow.children.length > 0) {
-    outline.removeRows(assistantRow.children)
-  }
 
   return assistantRow
 }
