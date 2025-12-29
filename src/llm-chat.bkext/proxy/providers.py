@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -27,7 +27,7 @@ class Provider:
 
     name: str = ""
 
-    def prepare_messages(self, messages: List[Message]) -> Dict[str, str | List[Message]]:
+    def prepare_messages(self, messages: List[Message]) -> Dict[str, Union[str, List[Message]]]:
         raise NotImplementedError
 
     def stream(self, session_id: str, messages: List[Message], api_key: str, model: str, max_tokens: int,
@@ -38,7 +38,7 @@ class Provider:
 class AnthropicProvider(Provider):
     name = "anthropic"
 
-    def prepare_messages(self, messages: List[Message]) -> Dict[str, str | List[Message]]:
+    def prepare_messages(self, messages: List[Message]) -> Dict[str, Union[str, List[Message]]]:
         # Keep only last system prompt
         system_messages = [m for m in messages if m.get("role") == "system"]
         system_prompt = system_messages[-1].get("content", "").strip() if system_messages else ""
