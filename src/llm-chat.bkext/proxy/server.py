@@ -18,8 +18,8 @@ import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+
+from providers import select_provider
 
 # Store active sessions: {session_id: {"chunks": [], "done": False, "error": None}}
 sessions = {}
@@ -153,14 +153,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 max_tokens = DEFAULT_MAX_TOKENS
 
             # Determine provider and get API key
-            provider = get_provider_for_model(model)
-            api_key = get_api_key(provider)
+            provider_name = get_provider_for_model(model)
+            provider = select_provider(provider_name)
+            if not provider:
+                self.send_json({"error": f"No provider registered for {provider_name}"}, 400)
+                return
+
+            api_key = get_api_key(provider.name)
 
             if not api_key:
                 self.send_json({
-                    "error": f"No API key found for {provider}. "
-                             f"Set it with `llm keys set {provider}` or "
-                             f"export {provider.upper()}_API_KEY"
+                    "error": f"No API key found for {provider.name}. "
+                             f"Set it with `llm keys set {provider.name}` or "
+                             f"export {provider.name.upper()}_API_KEY"
                 }, 400)
                 return
 
@@ -172,8 +177,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             # Start streaming in background thread
             thread = threading.Thread(
-                target=stream_from_anthropic,
-                args=(session_id, messages, api_key, model, max_tokens)
+                target=provider.stream,
+                args=(session_id, messages, api_key, model, max_tokens, sessions, sessions_lock)
             )
             thread.daemon = True
             thread.start()
@@ -211,81 +216,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.send_json({"status": "ok"})
         else:
             self.send_json({"error": "Not found"}, 404)
-
-
-def stream_from_anthropic(session_id, messages, api_key, model, max_tokens):
-    """Stream from Anthropic API and buffer chunks."""
-    print(f"[Server] Session {session_id}: Starting stream")
-    try:
-        # Separate system messages - use only the last one (lowest in document)
-        system_messages = [m for m in messages if m.get("role") == "system"]
-        conversation = [m for m in messages if m.get("role") != "system"]
-        system_prompt = system_messages[-1].get("content", "") if system_messages else ""
-
-        # Build request body
-        body = {
-            "model": model,
-            "messages": [{"role": m["role"], "content": m["content"].strip()} for m in conversation],
-            "stream": True,
-            "max_tokens": max_tokens
-        }
-        if system_prompt:
-            body["system"] = system_prompt.strip()
-
-        req = Request(
-            "https://api.anthropic.com/v1/messages",
-            data=json.dumps(body).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01",
-                "x-api-key": api_key
-            }
-        )
-
-        with urlopen(req) as response:
-            buffer = ""
-            for chunk in response:
-                buffer += chunk.decode("utf-8")
-
-                # Process complete lines
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    line = line.strip()
-
-                    if line.startswith("data: "):
-                        data = line[6:]
-                        if data == "[DONE]":
-                            with sessions_lock:
-                                if session_id in sessions:
-                                    sessions[session_id]["done"] = True
-                            return
-
-                        try:
-                            parsed = json.loads(data)
-                            if parsed.get("type") == "content_block_delta":
-                                delta = parsed.get("delta", {})
-                                if delta.get("type") == "text_delta":
-                                    text = delta.get("text", "")
-                                    if text:
-                                        with sessions_lock:
-                                            if session_id in sessions:
-                                                sessions[session_id]["chunks"].append(text)
-                        except json.JSONDecodeError:
-                            pass
-
-    except HTTPError as e:
-        error_body = e.read().decode("utf-8")
-        with sessions_lock:
-            if session_id in sessions:
-                sessions[session_id]["error"] = f"API error ({e.code}): {error_body}"
-    except Exception as e:
-        with sessions_lock:
-            if session_id in sessions:
-                sessions[session_id]["error"] = str(e)
-    finally:
-        with sessions_lock:
-            if session_id in sessions:
-                sessions[session_id]["done"] = True
 
 
 if __name__ == "__main__":
