@@ -182,9 +182,7 @@ class OpenAIProvider(Provider):
         if temperature is not None:
             body["temperature"] = temperature
         if reasoning_effort:
-            body["reasoning"] = {"effort": reasoning_effort}
-        else:
-            body["reasoning"] = {"effort": "none"}
+            body["reasoning_effort"] = reasoning_effort
 
         req = Request(
             "https://api.openai.com/v1/chat/completions",
