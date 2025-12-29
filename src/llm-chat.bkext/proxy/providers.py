@@ -178,7 +178,7 @@ class OpenAIProvider(Provider):
             "stream": True,
         }
         if max_tokens:
-            body["max_tokens"] = max_tokens
+            body["max_completion_tokens"] = max_tokens
         if temperature is not None:
             body["temperature"] = temperature
         if reasoning_effort:
