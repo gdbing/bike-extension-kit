@@ -1,4 +1,4 @@
-import { Row } from 'bike/app'
+import type { Row } from 'bike/app'
 import { Message } from './providers/types'
 
 /**
@@ -17,7 +17,7 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
   let markerRow: Row | null = null
   let row: Row | undefined = root.firstChild
 
-  // Find the root-level row containing stopRow - we'll include the entire message
+  // Walk stopRow up to the level-1 marker that contains it so the entire message is included
   let stopMarker: Row = stopRow
   while (stopMarker.level > 1 && stopMarker.parent) {
     stopMarker = stopMarker.parent

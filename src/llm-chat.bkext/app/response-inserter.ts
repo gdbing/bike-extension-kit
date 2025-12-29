@@ -36,6 +36,34 @@ function findOrCreateAssistantRow(outline: Outline, afterRow: Row): Row {
   return newRows[0]
 }
 
+function prepareAssistantRow(outline: Outline, afterRow: Row): Row {
+  const assistantRow = findOrCreateAssistantRow(outline, afterRow)
+
+  if (assistantRow.children.length > 0) {
+    outline.removeRows(assistantRow.children)
+  }
+
+  return assistantRow
+}
+
+export function insertStaticResponse(
+  outline: Outline,
+  afterRow: Row,
+  text: string
+): void {
+  const assistantRow = prepareAssistantRow(outline, afterRow)
+
+  const normalized = text.replace(/\r\n/g, '\n')
+  const lines = normalized.split('\n')
+
+  const rows = lines.map(line => ({ text: line }))
+  const inserted = outline.insertRows(rows, assistantRow)
+
+  if (inserted.length === 0) {
+    outline.insertRows([{ text: '' }], assistantRow)
+  }
+}
+
 /**
  * Stream tokens from the generator into the outline under an <assistant> heading.
  */
@@ -45,12 +73,7 @@ export async function streamResponseToOutline(
   tokenGenerator: AsyncGenerator<string, void, unknown>
 ): Promise<void> {
   // Find or create assistant heading
-  const assistantRow = findOrCreateAssistantRow(outline, afterRow)
-
-  // Clear existing children
-  if (assistantRow.children.length > 0) {
-    outline.removeRows(assistantRow.children)
-  }
+  const assistantRow = prepareAssistantRow(outline, afterRow)
 
   // Create initial content row
   let currentRow = outline.insertRows(
