@@ -30,8 +30,17 @@ class Provider:
     def prepare_messages(self, messages: List[Message]) -> Dict[str, Union[str, List[Message]]]:
         raise NotImplementedError
 
-    def stream(self, session_id: str, messages: List[Message], api_key: str, model: str, max_tokens: int,
-               sessions, sessions_lock) -> None:
+    def stream(
+        self,
+        session_id: str,
+        messages: List[Message],
+        api_key: str,
+        model: str,
+        max_tokens: int,
+        temperature: Optional[float],
+        sessions,
+        sessions_lock,
+    ) -> None:
         raise NotImplementedError
 
 
@@ -49,8 +58,17 @@ class AnthropicProvider(Provider):
 
         return {"system": system_prompt, "conversation": merged_conversation}
 
-    def stream(self, session_id: str, messages: List[Message], api_key: str, model: str, max_tokens: int,
-               sessions, sessions_lock) -> None:
+    def stream(
+        self,
+        session_id: str,
+        messages: List[Message],
+        api_key: str,
+        model: str,
+        max_tokens: int,
+        temperature: Optional[float],
+        sessions,
+        sessions_lock,
+    ) -> None:
         prepared = self.prepare_messages(messages)
         system_prompt = prepared["system"]
         conversation = prepared["conversation"]
@@ -63,6 +81,8 @@ class AnthropicProvider(Provider):
         }
         if system_prompt:
             body["system"] = system_prompt
+        if temperature is not None:
+            body["temperature"] = temperature
 
         req = Request(
             "https://api.anthropic.com/v1/messages",

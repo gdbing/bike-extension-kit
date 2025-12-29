@@ -1,6 +1,7 @@
 import { AppExtensionContext, CommandContext } from 'bike/app'
 import { config } from './config'
 import { parseMessages } from './message-parser'
+import { parseConversationSettings } from './settings-parser'
 import { HttpError, streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
 
@@ -37,6 +38,14 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
   try {
     // Parse messages from document up to cursor
     const messages = parseMessages(editor.outline.root, selection.row)
+    const settings = parseConversationSettings(editor.outline.root, selection.row)
+
+    if (settings.errors.length > 0) {
+      const message = settings.errors.join('\n')
+      console.log(`LLM Chat: ${message}`)
+      showInlineError(message)
+      return true
+    }
 
     if (messages.length === 0) {
       console.log('LLM Chat: No messages found. Add <user> or <system> markers.')
@@ -53,7 +62,12 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
     }
 
     // Stream completion from server
-    const tokenGenerator = streamCompletion(messages)
+    const tokenGenerator = streamCompletion(messages, {
+      model: settings.model,
+      maxTokens: settings.maxTokens,
+      temperature: settings.temperature,
+      provider: settings.provider
+    })
 
     // Stream response into outline
     await streamResponseToOutline(editor.outline, selection.row, tokenGenerator)

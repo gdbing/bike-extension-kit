@@ -152,8 +152,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 max_tokens = DEFAULT_MAX_TOKENS
 
+            temperature = body.get("temperature")
+            try:
+                temperature = float(temperature) if temperature is not None else None
+            except (TypeError, ValueError):
+                temperature = None
+
             # Determine provider and get API key
-            provider_name = get_provider_for_model(model)
+            provider_name = body.get("provider") or get_provider_for_model(model)
             provider = select_provider(provider_name)
             if not provider:
                 self.send_json({"error": f"No provider registered for {provider_name}"}, 400)
@@ -178,7 +184,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             # Start streaming in background thread
             thread = threading.Thread(
                 target=provider.stream,
-                args=(session_id, messages, api_key, model, max_tokens, sessions, sessions_lock)
+                args=(session_id, messages, api_key, model, max_tokens, temperature, sessions, sessions_lock)
             )
             thread.daemon = True
             thread.start()

@@ -6,4 +6,6 @@ export interface Message {
 export interface StreamOptions {
   model?: string
   maxTokens?: number
+  temperature?: number
+  provider?: string
 }
