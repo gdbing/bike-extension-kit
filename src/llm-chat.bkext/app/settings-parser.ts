@@ -13,7 +13,8 @@ const KNOWN_MODELS = [
   'claude-3-5-sonnet-20241022',
   'claude-3-opus-20240229',
   'claude-3-sonnet-20240229',
-  'claude-3-haiku-20240307'
+  'claude-3-haiku-20240307',
+  'claude-sonnet-3-7'
 ]
 
 const MODEL_ALIASES: Record<string, string> = {
@@ -201,6 +202,30 @@ function resolveModel(input: string): { model?: string; error?: string } {
   }
   if (matches.length > 1) {
     return { error: `Ambiguous model "${input}": ${matches.join(', ')}` }
+  }
+
+  // Fuzzy token-in-order match: all tokens (len > 1) must appear in order
+  const tokens = candidate
+    .split(/[^a-z0-9]+/)
+    .filter(token => token && (token.length > 1 || /^\d+$/.test(token)))
+  if (tokens.length) {
+    const fuzzyMatches = KNOWN_MODELS.filter(model => {
+      let start = 0
+      const lowerModel = model.toLowerCase()
+      for (const token of tokens) {
+        const index = lowerModel.indexOf(token, start)
+        if (index === -1) return false
+        start = index + token.length
+      }
+      return true
+    })
+
+    if (fuzzyMatches.length === 1) {
+      return { model: fuzzyMatches[0] }
+    }
+    if (fuzzyMatches.length > 1) {
+      return { error: `Ambiguous model "${input}": ${fuzzyMatches.join(', ')}` }
+    }
   }
 
   return { error: `Unknown model "${input}"` }

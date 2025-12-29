@@ -138,6 +138,29 @@ test('config overrides model and adds other params with latest precedence', () =
   assert.deepEqual(result.errors, [])
 })
 
+test('fuzzy model matching matches tokens in order', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<model>',
+      key: 'model',
+      children: [{ text: 'sonnet 3.7', key: 'model-line' }]
+    },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Hi', key: 'cursor' }]
+    }
+  ])
+
+  const stopRow = byKey['cursor']
+  if (!stopRow) throw new Error('Missing stop row')
+
+  const result = parseConversationSettings(root as any, stopRow as any)
+
+  assert.equal(result.model, 'claude-sonnet-3-7')
+  assert.deepEqual(result.errors, [])
+})
+
 test('reports errors for unknown model alias and invalid config keys', () => {
   const { root, byKey } = buildOutline([
     {
@@ -169,6 +192,29 @@ test('reports errors for unknown model alias and invalid config keys', () => {
   assert.ok(result.errors.some(e => e.includes('Unknown model "unknown-model"')))
   assert.ok(result.errors.some(e => e.includes('Unknown provider')))
   assert.ok(result.errors.some(e => e.includes('Unknown config key')))
+})
+
+test('unknown fuzzy tokens still report an error', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<model>',
+      key: 'bad-model',
+      children: [{ text: 'kimi', key: 'model-line' }]
+    },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Hi', key: 'cursor' }]
+    }
+  ])
+
+  const stopRow = byKey['cursor']
+  if (!stopRow) throw new Error('Missing stop row')
+
+  const result = parseConversationSettings(root as any, stopRow as any)
+
+  assert.equal(result.model, undefined)
+  assert.ok(result.errors.some(e => e.includes('Unknown model "kimi"')))
 })
 
 test('settings after the cursor marker are ignored', () => {
