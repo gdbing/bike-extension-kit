@@ -121,9 +121,9 @@ test('inserts a new assistant after the marker when cursor is inside a note', ()
   assert.equal(second.children[0].text.string, 'Assistant reply')
 })
 
-test('does not overwrite an existing assistant response after the current marker', () => {
+test('does not overwrite an existing message after the current marker', () => {
   const userRow = createRow('<user>')
-  const existingAssistant = createRow('<assistant>')
+  const existingAssistant = createRow('<config>')
   existingAssistant.children.push(createRow('Original reply', existingAssistant))
 
   userRow.nextSibling = existingAssistant
@@ -139,7 +139,7 @@ test('does not overwrite an existing assistant response after the current marker
   assert.equal(rootChildren[0].text.string, '<user>')
   assert.equal(rootChildren[1].text.string, '<assistant>')
   assert.equal(rootChildren[1].children[0].text.string, 'New reply')
-  assert.equal(rootChildren[2].text.string, '<assistant>')
+  assert.equal(rootChildren[2].text.string, '<config>')
   assert.equal(rootChildren[2].children[0].text.string, 'Original reply')
   assert.equal(rootChildren[3].text.string, '<user>')
 })
