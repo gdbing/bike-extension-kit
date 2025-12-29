@@ -38,6 +38,7 @@ class Provider:
         model: str,
         max_tokens: int,
         temperature: Optional[float],
+        reasoning_effort: Optional[str],
         sessions,
         sessions_lock,
     ) -> None:
@@ -66,6 +67,7 @@ class AnthropicProvider(Provider):
         model: str,
         max_tokens: int,
         temperature: Optional[float],
+        reasoning_effort: Optional[str],
         sessions,
         sessions_lock,
     ) -> None:
@@ -83,6 +85,7 @@ class AnthropicProvider(Provider):
             body["system"] = system_prompt
         if temperature is not None:
             body["temperature"] = temperature
+        # Anthropic does not support reasoning effort; ignore if provided
 
         req = Request(
             "https://api.anthropic.com/v1/messages",
@@ -141,8 +144,104 @@ class AnthropicProvider(Provider):
                     sessions[session_id]["done"] = True
 
 
+class OpenAIProvider(Provider):
+    name = "openai"
+
+    def prepare_messages(self, messages: List[Message]) -> Dict[str, Union[str, List[Message]]]:
+        # OpenAI can handle multiple systems; keep order as-is
+        conversation: List[Message] = []
+        for message in messages:
+            content = (message.get("content") or "").strip()
+            if not content:
+                continue
+            conversation.append({"role": message.get("role", "user"), "content": content})
+        return {"conversation": conversation}
+
+    def stream(
+        self,
+        session_id: str,
+        messages: List[Message],
+        api_key: str,
+        model: str,
+        max_tokens: int,
+        temperature: Optional[float],
+        reasoning_effort: Optional[str],
+        sessions,
+        sessions_lock,
+    ) -> None:
+        prepared = self.prepare_messages(messages)
+        conversation = prepared["conversation"]
+
+        body: Dict[str, Union[str, bool, float, int, List[Dict[str, str]], Dict[str, str]]] = {
+            "model": model,
+            "messages": conversation,  # type: ignore
+            "stream": True,
+        }
+        if max_tokens:
+            body["max_tokens"] = max_tokens
+        if temperature is not None:
+            body["temperature"] = temperature
+        if reasoning_effort:
+            body["reasoning"] = {"effort": reasoning_effort}
+        else:
+            body["reasoning"] = {"effort": "none"}
+
+        req = Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=json.dumps(body).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+
+        try:
+            with urlopen(req) as response:
+                buffer = ""
+                for chunk in response:
+                    buffer += chunk.decode("utf-8")
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data == "[DONE]":
+                                with sessions_lock:
+                                    if session_id in sessions:
+                                        sessions[session_id]["done"] = True
+                                return
+                            try:
+                                parsed = json.loads(data)
+                                choices = parsed.get("choices") or []
+                                if choices:
+                                    delta = choices[0].get("delta") or {}
+                                    text = delta.get("content") or ""
+                                    if text:
+                                        with sessions_lock:
+                                            if session_id in sessions:
+                                                sessions[session_id]["chunks"].append(text)
+                            except json.JSONDecodeError:
+                                pass
+        except HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            with sessions_lock:
+                if session_id in sessions:
+                    sessions[session_id]["error"] = f"API error ({e.code}): {error_body}"
+        except Exception as e:
+            with sessions_lock:
+                if session_id in sessions:
+                    sessions[session_id]["error"] = str(e)
+        finally:
+            with sessions_lock:
+                if session_id in sessions:
+                    sessions[session_id]["done"] = True
+
+
 providers = {
     "anthropic": AnthropicProvider(),
+    "openai": OpenAIProvider(),
     # Additional providers can be registered here as new classes.
 }
 

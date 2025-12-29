@@ -8,4 +8,5 @@ export interface StreamOptions {
   maxTokens?: number
   temperature?: number
   provider?: string
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
 }

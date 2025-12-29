@@ -158,6 +158,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 temperature = None
 
+            reasoning_effort = body.get("reasoningEffort")
+            if isinstance(reasoning_effort, str):
+                reasoning_effort = reasoning_effort.lower()
+            else:
+                reasoning_effort = None
+
             # Determine provider and get API key
             provider_name = body.get("provider") or get_provider_for_model(model)
             provider = select_provider(provider_name)
@@ -184,7 +190,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             # Start streaming in background thread
             thread = threading.Thread(
                 target=provider.stream,
-                args=(session_id, messages, api_key, model, max_tokens, temperature, sessions, sessions_lock)
+                args=(session_id, messages, api_key, model, max_tokens, temperature, reasoning_effort, sessions, sessions_lock)
             )
             thread.daemon = True
             thread.start()

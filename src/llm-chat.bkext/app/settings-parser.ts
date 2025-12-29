@@ -5,6 +5,7 @@ export interface ConversationSettings {
   provider?: string
   maxTokens?: number
   temperature?: number
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   errors: string[]
 }
 
@@ -12,17 +13,22 @@ const KNOWN_MODELS = [
   'claude-haiku-4-5',
   'claude-sonnet-3-7',
   'claude-sonnet-4-5',
-  'claude-opus-4-5'
+  'claude-opus-4-5',
+  'gpt-5.2',
+  'gpt-5-mini'
 ]
 
 const MODEL_ALIASES: Record<string, string> = {
   haiku: 'claude-haiku-4-5',
   sonnet: 'claude-sonnet-4-5',
-  opus: 'claude-opus-4-5'
+  opus: 'claude-opus-4-5',
+  'gpt-5.2': 'gpt-5.2',
+  'gpt-5-mini': 'gpt-5-mini'
 }
 
 const ALLOWED_PROVIDERS = new Set(['anthropic', 'openai'])
-const ALLOWED_CONFIG_KEYS = new Set(['model', 'provider', 'maxTokens', 'temperature'])
+const ALLOWED_CONFIG_KEYS = new Set(['model', 'provider', 'maxTokens', 'temperature', 'reasoningEffort'])
+const ALLOWED_REASONING_EFFORT = new Set(['none', 'low', 'medium', 'high'])
 
 export function parseConversationSettings(root: Row, stopRow: Row): ConversationSettings {
   const settings: ConversationSettings = { errors: [] }
@@ -84,6 +90,9 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
           }
           if (typeof configResult.values.temperature === 'number') {
             settings.temperature = configResult.values.temperature
+          }
+          if (configResult.values.reasoningEffort) {
+            settings.reasoningEffort = configResult.values.reasoningEffort
           }
           row = nextRowAfterSubtree(row)
           continue
@@ -174,6 +183,16 @@ function applyConfig(
       errors.push(`temperature must be between 0 and 2: ${rawValue}`)
     } else {
       values.temperature = num
+    }
+    return
+  }
+
+  if (key === 'reasoningEffort') {
+    const effort = rawValue.toLowerCase()
+    if (!ALLOWED_REASONING_EFFORT.has(effort)) {
+      errors.push(`reasoningEffort must be one of none, low, medium, high: ${rawValue}`)
+    } else {
+      values.reasoningEffort = effort as ConversationSettings['reasoningEffort']
     }
     return
   }

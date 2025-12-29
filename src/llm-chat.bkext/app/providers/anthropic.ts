@@ -66,6 +66,7 @@ export async function* streamCompletion(
   const maxTokens = options.maxTokens ?? config.requestDefaults.maxTokens
   const temperature = options.temperature
   const provider = options.provider
+  const reasoningEffort = options.reasoningEffort
 
   // Start chat session
   const startPayload: Record<string, unknown> = {
@@ -86,6 +87,10 @@ export async function* streamCompletion(
 
   if (provider) {
     startPayload.provider = provider
+  }
+
+  if (reasoningEffort) {
+    startPayload.reasoningEffort = reasoningEffort
   }
 
   const startResponse = await fetch(getChatEndpoint(), {

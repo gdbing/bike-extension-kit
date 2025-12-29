@@ -100,7 +100,7 @@ test('resolves <model> aliases against known models', () => {
 
   const result = parseConversationSettings(root as any, stopRow as any)
 
-  assert.equal(result.model, 'claude-3-5-sonnet-20241022')
+  assert.equal(result.model, 'claude-sonnet-4-5')
   assert.deepEqual(result.errors, [])
 })
 
@@ -135,6 +135,7 @@ test('config overrides model and adds other params with latest precedence', () =
   assert.equal(result.model, 'custom-model')
   assert.equal(result.maxTokens, 512)
   assert.equal(result.temperature, 1.2)
+  assert.equal(result.reasoningEffort, undefined)
   assert.deepEqual(result.errors, [])
 })
 
@@ -192,6 +193,33 @@ test('reports errors for unknown model alias and invalid config keys', () => {
   assert.ok(result.errors.some(e => e.includes('Unknown model "unknown-model"')))
   assert.ok(result.errors.some(e => e.includes('Unknown provider')))
   assert.ok(result.errors.some(e => e.includes('Unknown config key')))
+})
+
+test('parses reasoningEffort when provided', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<config>',
+      key: 'config',
+      children: [
+        { text: 'model: gpt-5.2', key: 'model' },
+        { text: 'reasoningEffort: medium', key: 'effort' }
+      ]
+    },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Hi', key: 'cursor' }]
+    }
+  ])
+
+  const stopRow = byKey['cursor']
+  if (!stopRow) throw new Error('Missing stop row')
+
+  const result = parseConversationSettings(root as any, stopRow as any)
+
+  assert.equal(result.model, 'gpt-5.2')
+  assert.equal(result.reasoningEffort, 'medium')
+  assert.deepEqual(result.errors, [])
 })
 
 test('unknown fuzzy tokens still report an error', () => {

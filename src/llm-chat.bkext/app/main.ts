@@ -66,7 +66,8 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
       model: settings.model,
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
-      provider: settings.provider
+      provider: settings.provider,
+      reasoningEffort: settings.reasoningEffort
     })
 
     // Stream response into outline

@@ -78,7 +78,7 @@ After pressing `Shift+Cmd+L`, an `<assistant>` block will be added with the resp
 ### Outline Config Markers
 
 - `<model>`: first non-empty line under the marker is matched (case-insensitive) against known models/aliases (`haiku`, `sonnet`, `opus`, etc.). Errors if unknown/ambiguous.
-- `<config>`: root-level marker with `key: value` lines (simple scalars). Allowed keys: `model` (exact string, no alias resolution), `provider` (`anthropic`/`openai`), `maxTokens` (positive number), `temperature` (0–2). Unknown keys or invalid values raise errors.
+- `<config>`: root-level marker with `key: value` lines (simple scalars). Allowed keys: `model` (exact string, no alias resolution), `provider` (`anthropic`/`openai`), `maxTokens` (positive number), `temperature` (0–2), `reasoningEffort` (`none`/`low`/`medium`/`high` for OpenAI). Unknown keys or invalid values raise errors.
 - Multiple markers are merged in document order; later values win. Markers after the cursor row are ignored.
 - Fuzzy model matching: `<model>` also supports in-order token matching (e.g., `sonnet 3.7` matches `claude-sonnet-3-7`), but unknown/ambiguous inputs raise errors.
 
