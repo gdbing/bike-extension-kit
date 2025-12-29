@@ -38,6 +38,7 @@ Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling in
    - `<user>` - Your message to the LLM
    - `<system>` - System instructions
    - `<assistant>` - Previous LLM responses (or any `<name>` marker)
+   - Markers **must be root-level rows**; nested markers are treated as plain text
 
 2. Nest your content under the markers (indented)
 

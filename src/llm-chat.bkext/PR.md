@@ -147,6 +147,7 @@ Response: `{"sessionId": "abc123"}`
 3. **Use only last system message** - Anthropic API compliance
 4. **Improve message parser** - Strict nesting, note skipping, flexible markers, ID fix
 5. **Refactor to separate concerns** - Move API keys and provider logic to server
+6. **Explicit marker rules** - Markers must be root-level; nested markers are ignored
 
 ## How to Review
 
