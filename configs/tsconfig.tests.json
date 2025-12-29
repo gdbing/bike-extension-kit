@@ -1,7 +1,15 @@
 {
   "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "skipLibCheck": true
+  },
   "include": [
-    "../src/llm-chat.bkext/app/**/*.ts",
+    "../src/llm-chat.bkext/app/message-parser.ts",
+    "../src/llm-chat.bkext/app/response-inserter.ts",
+    "../src/llm-chat.bkext/app/providers/types.ts",
     "../tests/llm-chat/**/*.ts"
   ]
 }
