@@ -83,13 +83,13 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
       }
     }
 
-    // Accumulate content only if nested under the marker row
-    if (currentMessage && markerRow && isDescendant(row, markerRow)) {
-      const text = row.text.string
-      // Preserve indentation relative to marker level
-      const indent = '  '.repeat(Math.max(0, row.level - 2))
-      currentMessage.content += indent + text + '\n'
-    }
+      // Accumulate content only if nested under the marker row
+      if (currentMessage && markerRow && isDescendant(row, markerRow)) {
+        const text = row.text.string
+        // Preserve indentation relative to marker level using tabs
+        const indent = '\t'.repeat(Math.max(0, row.level - 2))
+        currentMessage.content += indent + text + '\n'
+      }
 
     row = row.nextInOutline
   }

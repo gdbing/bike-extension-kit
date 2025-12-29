@@ -118,7 +118,7 @@ test('parses nested content with indentation preserved', () => {
   assert.equal(messages.length, 1)
   assert.deepEqual(messages[0], {
     role: 'user',
-    content: 'Top level line\nNested parent\n  Nested child\n'
+    content: 'Top level line\nNested parent\n\tNested child\n'
   })
 })
 
@@ -281,7 +281,7 @@ test('ignores indented markers; only level-1 markers start messages', () => {
   assert.deepEqual(messages, [
     {
       role: 'user',
-      content: 'Top level\n<assistant>\n  Indented content\nAfter nested marker\n'
+      content: 'Top level\n<assistant>\n\tIndented content\nAfter nested marker\n'
     },
     {
       role: 'assistant',
