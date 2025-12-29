@@ -67,6 +67,14 @@ After pressing `Shift+Cmd+L`, an `<assistant>` block will be added with the resp
 - Strict nesting: only indented content is included in messages
 - Configurable server endpoint, polling interval, and default model (`config.json`)
 
+### Message Parser Rules
+
+- Markers must be root-level rows matching `<name>`.
+- `<user>` → user role, `<system>` → system role, any other marker → assistant role.
+- Only content nested under a marker is included; note rows and their descendants are skipped.
+- Parsing stops after the marker that contains the cursor row.
+- Nested markers are treated as plain text.
+
 ## Architecture
 
 ```
@@ -82,3 +90,20 @@ The extension parses the document and sends messages to the server. The server:
 - Handles provider-specific logic (system message handling, etc.)
 - Streams responses back to the extension
 - Sends error details inline so the outline reflects failures
+
+## API (local server)
+
+- **POST** `/chat` — body: `{ messages, model?, maxTokens? }` → `{ sessionId }`
+- **GET** `/chunks/{sessionId}` — returns `{ chunks: string[], done: boolean, error: string | null }`
+
+## Testing
+
+```bash
+npm run test:llm-chat
+```
+
+## Known limitations / future work
+
+- Model selection is basic; only Anthropic supported today.
+- No request cancellation; polling-based streaming.
+- Minimal error UI; only inline message insertion.
