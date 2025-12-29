@@ -1,5 +1,4 @@
 import * as assert from 'node:assert/strict'
-import type { Row } from 'bike/app'
 import { insertStaticResponse } from '../../src/llm-chat.bkext/app/response-inserter'
 import { test } from './test-harness'
 
@@ -10,7 +9,7 @@ interface FakeText {
   replace(range: [number, number], value: string): void
 }
 
-interface FakeRow extends Row {
+interface FakeRow {
   id: string
   text: FakeText
   level: number
