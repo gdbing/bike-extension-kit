@@ -9,18 +9,16 @@ export interface ConversationSettings {
 }
 
 const KNOWN_MODELS = [
-  'claude-3-5-haiku-20241022',
-  'claude-3-5-sonnet-20241022',
-  'claude-3-opus-20240229',
-  'claude-3-sonnet-20240229',
-  'claude-3-haiku-20240307',
-  'claude-sonnet-3-7'
+  'claude-haiku-4-5',
+  'claude-sonnet-3-7',
+  'claude-sonnet-4-5',
+  'claude-opus-4-5'
 ]
 
 const MODEL_ALIASES: Record<string, string> = {
-  haiku: 'claude-3-5-haiku-20241022',
-  sonnet: 'claude-3-5-sonnet-20241022',
-  opus: 'claude-3-opus-20240229'
+  haiku: 'claude-haiku-4-5',
+  sonnet: 'claude-sonnet-4-5',
+  opus: 'claude-opus-4-5'
 }
 
 const ALLOWED_PROVIDERS = new Set(['anthropic', 'openai'])
