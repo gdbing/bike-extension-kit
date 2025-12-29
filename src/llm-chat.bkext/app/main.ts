@@ -22,7 +22,7 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
 
   const showInlineError = (message: string) => {
     if (!SHOW_ERRORS_IN_OUTLINE) return
-    insertStaticResponse(editor.outline, selection.row, `Error: ${message}`)
+    insertStaticResponse(editor.outline, selection.row, `Error: ${message}`, '<error>')
   }
 
   // Prevent concurrent requests

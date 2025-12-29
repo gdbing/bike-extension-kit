@@ -123,7 +123,7 @@ test('inserts a new assistant after the marker when cursor is inside a note', ()
 
 test('does not overwrite an existing message after the current marker', () => {
   const userRow = createRow('<user>')
-  const existingAssistant = createRow('<config>')
+  const existingAssistant = createRow('<assistant>')
   existingAssistant.children.push(createRow('Original reply', existingAssistant))
 
   userRow.nextSibling = existingAssistant
@@ -139,7 +139,29 @@ test('does not overwrite an existing message after the current marker', () => {
   assert.equal(rootChildren[0].text.string, '<user>')
   assert.equal(rootChildren[1].text.string, '<assistant>')
   assert.equal(rootChildren[1].children[0].text.string, 'New reply')
-  assert.equal(rootChildren[2].text.string, '<config>')
+  assert.equal(rootChildren[2].text.string, '<assistant>')
   assert.equal(rootChildren[2].children[0].text.string, 'Original reply')
+  assert.equal(rootChildren[3].text.string, '<user>')
+})
+
+test('inserts errors under an <error> marker without duplicating assistant headings', () => {
+  const userRow = createRow('<user>')
+  const priorAssistant = createRow('<assistant>')
+  priorAssistant.children.push(createRow('Previous reply', priorAssistant))
+
+  userRow.nextSibling = priorAssistant
+  const trailingRow = createRow('<user>')
+  priorAssistant.nextSibling = trailingRow
+
+  const outline = new FakeOutline([userRow, priorAssistant, trailingRow])
+
+  insertStaticResponse(outline as any, userRow as any, 'Error: failed', '<error>')
+
+  const rootChildren = outline.root.children
+  assert.equal(rootChildren[0].text.string, '<user>')
+  assert.equal(rootChildren[1].text.string, '<error>')
+  assert.equal(rootChildren[1].children[0].text.string, 'Error: failed')
+  assert.equal(rootChildren[2].text.string, '<assistant>')
+  assert.equal(rootChildren[2].children[0].text.string, 'Previous reply')
   assert.equal(rootChildren[3].text.string, '<user>')
 })
