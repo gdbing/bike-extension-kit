@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "../src/llm-chat.bkext/app/**/*.ts",
+    "../tests/llm-chat/**/*.ts"
+  ]
+}
