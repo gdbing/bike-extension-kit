@@ -3,7 +3,7 @@
 Local streaming proxy for Bike LLM Chat extension.
 
 Run with: python3 server.py
-Then use the extension with Cmd+Shift+Return
+Then trigger the extension with Cmd+Shift+L (LLM Chat: Send)
 
 API keys are retrieved from:
 1. Simon Willison's `llm` CLI tool (llm keys get <provider>)
@@ -16,9 +16,10 @@ import subprocess
 import threading
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from typing import Optional
-from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 # Store active sessions: {session_id: {"chunks": [], "done": False, "error": None}}
 sessions = {}
@@ -27,10 +28,30 @@ sessions_lock = threading.Lock()
 # Cache for API keys
 api_key_cache = {}
 
-PORT = 3033
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
-# Default model
-DEFAULT_MODEL = "claude-3-5-haiku-20241022"
+
+def load_config() -> dict:
+    try:
+        with CONFIG_PATH.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except FileNotFoundError:
+        print("[Config] config.json not found, using defaults")
+    except json.JSONDecodeError as error:
+        print(f"[Config] Failed to parse config.json: {error}")
+    return {}
+
+
+CONFIG = load_config()
+SERVER_CONFIG = CONFIG.get("server", {})
+REQUEST_DEFAULTS = CONFIG.get("requestDefaults", {})
+
+PORT = int(SERVER_CONFIG.get("port", 3033) or 3033)
+HOST = SERVER_CONFIG.get("host", "localhost")
+
+# Default model settings
+DEFAULT_MODEL = REQUEST_DEFAULTS.get("model", "claude-3-5-haiku-20241022")
+DEFAULT_MAX_TOKENS = REQUEST_DEFAULTS.get("maxTokens", 4096)
 
 
 def get_api_key(provider: str) -> Optional[str]:
@@ -109,9 +130,27 @@ class ProxyHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(content_length))
 
-            messages = body.get("messages", [])
-            model = body.get("model", DEFAULT_MODEL)
-            max_tokens = body.get("maxTokens", 4096)
+            raw_messages = body.get("messages", [])
+            messages = []
+            for msg in raw_messages:
+                content = (msg.get("content") or "") if isinstance(msg, dict) else ""
+                if not content.strip():
+                    continue
+                messages.append({
+                    "role": msg.get("role", "assistant"),
+                    "content": content
+                })
+
+            if not messages:
+                self.send_json({"error": "No non-empty messages provided."}, 400)
+                return
+
+            model = body.get("model") or DEFAULT_MODEL
+            max_tokens = body.get("maxTokens", DEFAULT_MAX_TOKENS)
+            try:
+                max_tokens = int(max_tokens)
+            except (TypeError, ValueError):
+                max_tokens = DEFAULT_MAX_TOKENS
 
             # Determine provider and get API key
             provider = get_provider_for_model(model)
@@ -216,7 +255,10 @@ def stream_from_anthropic(session_id, messages, api_key, model, max_tokens):
                     if line.startswith("data: "):
                         data = line[6:]
                         if data == "[DONE]":
-                            continue
+                            with sessions_lock:
+                                if session_id in sessions:
+                                    sessions[session_id]["done"] = True
+                            return
 
                         try:
                             parsed = json.loads(data)
@@ -247,9 +289,9 @@ def stream_from_anthropic(session_id, messages, api_key, model, max_tokens):
 
 
 if __name__ == "__main__":
-    print(f"LLM Chat Server starting on http://localhost:{PORT}")
+    print(f"LLM Chat Server starting on http://{HOST}:{PORT}")
     print("   Press Ctrl+C to stop\n")
-    server = HTTPServer(("localhost", PORT), ProxyHandler)
+    server = HTTPServer((HOST, PORT), ProxyHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

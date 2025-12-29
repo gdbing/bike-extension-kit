@@ -1,0 +1,16 @@
+{
+  "server": {
+    "protocol": "http",
+    "host": "127.0.0.1",
+    "port": 3033,
+    "basePath": ""
+  },
+  "pollingIntervalMs": 200,
+  "requestDefaults": {
+    "model": "claude-3-5-haiku-20241022",
+    "maxTokens": 4096
+  },
+  "ui": {
+    "showErrorsInOutline": true
+  }
+}

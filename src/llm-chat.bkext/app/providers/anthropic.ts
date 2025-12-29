@@ -1,7 +1,18 @@
+import { config, getChatEndpoint, getChunksEndpoint, getHealthEndpoint } from '../config'
 import { Message, StreamOptions } from './types'
 
-const SERVER_URL = 'http://127.0.0.1:3033'
-const POLL_INTERVAL_MS = 50
+const POLL_INTERVAL_MS = config.pollingIntervalMs
+
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly statusText: string,
+    message: string
+  ) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -9,11 +20,33 @@ function sleep(ms: number): Promise<void> {
 
 async function isServerRunning(): Promise<boolean> {
   try {
-    const response = await fetch(`${SERVER_URL}/health`)
+    const response = await fetch(getHealthEndpoint())
     return response.ok
   } catch {
     return false
   }
+}
+
+async function buildHttpError(response: Response): Promise<HttpError> {
+  let detail: string | null = null
+
+  try {
+    const text = await response.text()
+    if (text) {
+      try {
+        const parsed = JSON.parse(text)
+        detail = typeof parsed === 'string' ? parsed : parsed.error ?? JSON.stringify(parsed)
+      } catch {
+        detail = text
+      }
+    }
+  } catch {
+    detail = null
+  }
+
+  const baseMessage = `HTTP ${response.status} ${response.statusText}`
+  const message = detail ? `${baseMessage}: ${detail}` : baseMessage
+  return new HttpError(response.status, response.statusText, message)
 }
 
 export async function* streamCompletion(
@@ -24,25 +57,35 @@ export async function* streamCompletion(
 
   if (!serverAvailable) {
     throw new Error(
-      'LLM Chat server not running. Start it with:\n' +
+      `LLM Chat server not running at ${getServerBaseUrlDescription()}. Start it with:\n` +
       '  cd src/llm-chat.bkext/proxy && python3 server.py'
     )
   }
 
+  const model = options.model ?? config.requestDefaults.model
+  const maxTokens = options.maxTokens ?? config.requestDefaults.maxTokens
+
   // Start chat session
-  const startResponse = await fetch(`${SERVER_URL}/chat`, {
+  const startPayload: Record<string, unknown> = {
+    messages
+  }
+
+  if (model) {
+    startPayload.model = model
+  }
+
+  if (typeof maxTokens === 'number') {
+    startPayload.maxTokens = maxTokens
+  }
+
+  const startResponse = await fetch(getChatEndpoint(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages,
-      model: options.model,
-      maxTokens: options.maxTokens
-    })
+    body: JSON.stringify(startPayload)
   })
 
   if (!startResponse.ok) {
-    const error = await startResponse.json()
-    throw new Error(error.error || 'Failed to start chat session')
+    throw await buildHttpError(startResponse)
   }
 
   const { sessionId } = await startResponse.json()
@@ -51,9 +94,9 @@ export async function* streamCompletion(
   while (true) {
     await sleep(POLL_INTERVAL_MS)
 
-    const pollResponse = await fetch(`${SERVER_URL}/chunks/${sessionId}`)
+    const pollResponse = await fetch(getChunksEndpoint(sessionId))
     if (!pollResponse.ok) {
-      throw new Error('Failed to poll for chunks')
+      throw await buildHttpError(pollResponse)
     }
 
     const { chunks, done, error } = await pollResponse.json()
@@ -71,4 +114,10 @@ export async function* streamCompletion(
       break
     }
   }
+}
+
+function getServerBaseUrlDescription(): string {
+  const { protocol = 'http', host, port } = config.server
+  const portSegment = port ? `:${port}` : ''
+  return `${protocol}://${host}${portSegment}`
 }

@@ -28,6 +28,10 @@ python3 server.py
 
 The server runs on `http://localhost:3033`. Keep it running while using the extension.
 
+## Configuration
+
+Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, or default model parameters. The extension reads these values at runtime.
+
 ## Usage
 
 1. Create message blocks using markers at the root level:
@@ -37,7 +41,7 @@ The server runs on `http://localhost:3033`. Keep it running while using the exte
 
 2. Nest your content under the markers (indented)
 
-3. Press `Cmd+Shift+Return` to send
+3. Press `Shift+Cmd+L` to send (or run **LLM Chat: Send** from the command palette)
 
 The response will stream in under an `<assistant>` heading.
 
@@ -51,7 +55,7 @@ The response will stream in under an `<assistant>` heading.
   What is the capital of France?
 ```
 
-After pressing `Cmd+Shift+Return`, an `<assistant>` block will be added with the response.
+After pressing `Shift+Cmd+L`, an `<assistant>` block will be added with the response.
 
 ## Features
 
@@ -60,6 +64,7 @@ After pressing `Cmd+Shift+Return`, an `<assistant>` block will be added with the
 - System prompts for custom behavior
 - Note-type rows are treated as comments (excluded from messages)
 - Strict nesting: only indented content is included in messages
+- Configurable server endpoint, polling interval, and default model (`config.json`)
 
 ## Architecture
 
@@ -75,3 +80,4 @@ The extension parses the document and sends messages to the server. The server:
 - Manages API keys (via `llm` CLI or environment variables)
 - Handles provider-specific logic (system message handling, etc.)
 - Streams responses back to the extension
+- Sends error details inline so the outline reflects failures

@@ -3,15 +3,29 @@
 Debug server for LLM Chat extension parser testing.
 
 Run with: python3 debug_server.py
-Then use the extension with Cmd+Shift+Return
+Then trigger the extension with Cmd+Shift+L (LLM Chat: Send)
 
 This server prints the parsed messages without calling any API.
 """
 
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 
-PORT = 3033
+
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+
+
+def load_config() -> dict:
+    try:
+        with CONFIG_PATH.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+CONFIG = load_config()
+PORT = int(CONFIG.get("server", {}).get("port", 3033) or 3033)
 
 
 class DebugHandler(BaseHTTPRequestHandler):
@@ -40,7 +54,6 @@ class DebugHandler(BaseHTTPRequestHandler):
             messages = body.get("messages", [])
             model = body.get("model", "claude-3-5-haiku-20241022")
             max_tokens = body.get("maxTokens", 4096)
-            has_api_key = bool(body.get("apiKey", ""))
 
             # Pretty print the request
             print("\n" + "=" * 60)
@@ -48,7 +61,6 @@ class DebugHandler(BaseHTTPRequestHandler):
             print("=" * 60)
             print(f"Model: {model}")
             print(f"Max Tokens: {max_tokens}")
-            print(f"API Key Present: {has_api_key}")
             print(f"Message Count: {len(messages)}")
             print("-" * 60)
 
@@ -93,7 +105,7 @@ class DebugHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"🔍 LLM Chat DEBUG Server on http://localhost:{PORT}")
+    print(f"LLM Chat DEBUG Server on http://localhost:{PORT}")
     print("   This server prints requests without calling any API")
     print("   Press Ctrl+C to stop\n")
     server = HTTPServer(("localhost", PORT), DebugHandler)
