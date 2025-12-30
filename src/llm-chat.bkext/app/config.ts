@@ -10,7 +10,6 @@ export interface ExtensionConfig {
     protocol: 'http' | 'https'
     host: string
     port: number
-    basePath: string
   }
   pollingIntervalMs: number
   requestDefaults: {
@@ -64,9 +63,6 @@ function assertConfig(value: PartialConfig): asserts value is ExtensionConfig {
     if (!isNumber(value.server.port)) {
       errors.push('server.port must be a number')
     }
-    if (typeof value.server.basePath !== 'string') {
-      errors.push('server.basePath must be a string (can be empty)')
-    }
   }
 
   if (!isNumber(value.pollingIntervalMs)) {
@@ -113,15 +109,9 @@ assertConfig(rawConfig)
 export const config: ExtensionConfig = rawConfig
 
 export function getServerBaseUrl(): string {
-  const { protocol, host, port, basePath } = config.server
-  const trimmedBasePath = basePath.replace(/\/+$/, '')
-  const normalizedBasePath = trimmedBasePath
-    ? trimmedBasePath.startsWith('/')
-      ? trimmedBasePath
-      : `/${trimmedBasePath}`
-    : ''
+  const { protocol, host, port } = config.server
   const portSegment = port ? `:${port}` : ''
-  return `${protocol}://${host}${portSegment}${normalizedBasePath}`
+  return `${protocol}://${host}${portSegment}`
 }
 
 export function getChatEndpoint(): string {

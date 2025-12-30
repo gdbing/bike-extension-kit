@@ -64,8 +64,6 @@ def validate_config(config: dict) -> None:
             errors.append("server.protocol must be http or https")
         if not _is_number(server_config.get("port")):
             errors.append("server.port must be a number")
-        if not isinstance(server_config.get("basePath"), str):
-            errors.append("server.basePath must be a string (can be empty)")
 
     if not _is_number(config.get("pollingIntervalMs")):
         errors.append("pollingIntervalMs must be a number")
