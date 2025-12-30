@@ -1,10 +1,35 @@
+import { copyFileSync, mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { runTests } from './test-harness'
 
-import './message-parser.test'
-import './response-inserter.test'
-import './settings-parser.test'
+function seedConfigForTests(): void {
+  const root = process.cwd()
+  const testRoot = resolve(__dirname, '../../src/llm-chat.bkext')
+  const targetDir = dirname(resolve(testRoot, 'config.json'))
+  mkdirSync(targetDir, { recursive: true })
 
-runTests().catch(error => {
+  copyFileSync(
+    resolve(root, 'src/llm-chat.bkext/config.json'),
+    resolve(testRoot, 'config.json')
+  )
+  copyFileSync(
+    resolve(root, 'src/llm-chat.bkext/manifest.json'),
+    resolve(testRoot, 'manifest.json')
+  )
+}
+
+async function main(): Promise<void> {
+  seedConfigForTests()
+
+  await import('./config.test')
+  await import('./message-parser.test')
+  await import('./response-inserter.test')
+  await import('./settings-parser.test')
+
+  await runTests()
+}
+
+main().catch(error => {
   console.error('Test runner encountered an unexpected error')
   console.error(error)
   process.exitCode = 1

@@ -114,6 +114,30 @@ test('resolves <model> against configured models and sets provider', () => {
   assert.deepEqual(result.errors, [])
 })
 
+test('resolves <model> using config defaults when no model list is provided', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<model>',
+      key: 'model',
+      children: [{ text: 'sonnet 4.5', key: 'model-value' }]
+    },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Hi', key: 'cursor' }]
+    }
+  ])
+
+  const stopRow = byKey['cursor']
+  if (!stopRow) throw new Error('Missing stop row')
+
+  const result = parseConversationSettings(root as any, stopRow as any)
+
+  assert.equal(result.model, 'claude-sonnet-4-5')
+  assert.equal(result.provider, 'anthropic')
+  assert.deepEqual(result.errors, [])
+})
+
 test('config overrides model and adds other params with latest precedence', () => {
   const { root, byKey } = buildOutline([
     {

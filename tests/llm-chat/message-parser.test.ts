@@ -169,6 +169,31 @@ test('skips note rows and their descendants', () => {
   ])
 })
 
+test('ignores root rows that are not markers', () => {
+  const { root, byKey } = buildOutline([
+    { text: 'user', key: 'plain-user' },
+    { text: 'NB refer to $URL', key: 'note' },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Hello', key: 'user-line' }]
+    }
+  ])
+
+  const stopRow = byKey['user-line']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages, [
+    {
+      role: 'user',
+      content: 'Hello\n'
+    }
+  ])
+})
+
 test('stops after the level-1 ancestor containing the cursor row', () => {
   const { root, byKey } = buildOutline([
     {

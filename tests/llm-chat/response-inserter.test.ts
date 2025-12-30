@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict'
-import { insertStaticResponse } from '../../src/llm-chat.bkext/app/response-inserter'
+import { insertStaticResponse, streamResponseToOutline } from '../../src/llm-chat.bkext/app/response-inserter'
 import { test } from './test-harness'
 
 type RowType = 'row' | 'note'
@@ -59,6 +59,10 @@ class FakeOutline {
       parent.children = parent.children.filter(child => child !== row)
       this.relinkSiblings(parent)
     }
+  }
+
+  transaction(_options: { animate?: string }, fn: () => void): void {
+    fn()
   }
 
   // Unused Outline methods for this test suite
@@ -175,4 +179,24 @@ test('inserts errors under an <error> marker without duplicating assistant headi
   assert.equal(rootChildren[2].text.string, '<assistant>')
   assert.equal(rootChildren[2].children[0].text.string, 'Previous reply')
   assert.equal(rootChildren[3].text.string, '<user>')
+})
+
+async function* makeTokenStream(text: string): AsyncGenerator<string, void, unknown> {
+  yield text
+}
+
+test('streaming responses always create new marker rows', async () => {
+  const userRow = createRow('<user>')
+  const outline = new FakeOutline([userRow])
+
+  await streamResponseToOutline(outline as any, userRow as any, makeTokenStream('First reply'))
+  await streamResponseToOutline(outline as any, userRow as any, makeTokenStream('Second reply'))
+
+  const rootChildren = outline.root.children
+  assert.equal(rootChildren.length, 3)
+  assert.equal(rootChildren[0].text.string, '<user>')
+  assert.equal(rootChildren[1].text.string, '<assistant>')
+  assert.equal(rootChildren[2].text.string, '<assistant>')
+  assert.equal(rootChildren[1].children[0].text.string, 'Second reply')
+  assert.equal(rootChildren[2].children[0].text.string, 'First reply')
 })
