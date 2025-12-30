@@ -37,6 +37,7 @@ type PartialConfig = Partial<ExtensionConfig> & {
 }
 
 const rawConfig = require('../config.json') as PartialConfig
+const rawManifest = require('../manifest.json') as { host_permissions?: string[] }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -107,6 +108,39 @@ function assertConfig(value: PartialConfig): asserts value is ExtensionConfig {
 assertConfig(rawConfig)
 
 export const config: ExtensionConfig = rawConfig
+
+function isHostAllowedByManifest(server: ExtensionConfig['server']): boolean {
+  const hostPermissions = rawManifest.host_permissions ?? []
+  const protocol = server.protocol
+  const host = server.host
+  const port = server.port
+
+  return hostPermissions.some(pattern => {
+    if (!pattern.endsWith('/*')) return false
+    const trimmed = pattern.slice(0, -2)
+    const match = trimmed.match(/^([a-z*]+):\/\/([^/]+)$/i)
+    if (!match) return false
+    const [, patternProtocol, patternHost] = match
+    if (patternProtocol !== '*' && patternProtocol.toLowerCase() !== protocol) {
+      return false
+    }
+    const [patternHostname, patternPort] = patternHost.split(':')
+    if (patternHostname !== '*' && patternHostname.toLowerCase() !== host.toLowerCase()) {
+      return false
+    }
+    if (patternPort && Number(patternPort) !== port) {
+      return false
+    }
+    return true
+  })
+}
+
+if (!isHostAllowedByManifest(config.server)) {
+  const target = `${config.server.protocol}://${config.server.host}:${config.server.port}`
+  throw new Error(
+    `llm-chat config server ${target} is not allowed by manifest host_permissions`
+  )
+}
 
 export function getServerBaseUrl(): string {
   const { protocol, host, port } = config.server
