@@ -17,16 +17,7 @@ function findOrCreateMarkerRow(
 
   const normalizedMarker = markerText.trim().toLowerCase()
 
-  // Search for existing marker row among root-level siblings
-  const nextSibling = rootLevelRow.nextSibling
-  if (nextSibling && nextSibling.text.string.trim().toLowerCase() === normalizedMarker) {
-    // Reuse existing marker only if it has no content to avoid clobbering later messages
-    if (nextSibling.children.length === 0) {
-      return nextSibling
-    }
-  }
-
-  // Create new marker row at root level, after the current root-level row
+  // Always create a new marker row to avoid concurrent streaming collisions.
   const newRows = outline.insertRows(
     [{ text: markerText }],
     outline.root,

@@ -9,9 +9,6 @@ import { updateMarkerAttributes } from './marker-attributes'
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
 
-// Prevent concurrent requests
-let isProcessing = false
-
 const SHOW_ERRORS_IN_OUTLINE = config.ui.showErrorsInOutline
 
 function getResponseMarkerText(settings: ReturnType<typeof parseConversationSettings>): string {
@@ -39,15 +36,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     insertStaticResponse(editor.outline, selection.row, `Error: ${message}`, '<error>')
   }
 
-  // Prevent concurrent requests
-  if (isProcessing) {
-    console.log(`LLM Chat [${INSTANCE_ID}]: Already processing a request, please wait...`)
-    return
-  }
-
   console.log(`LLM Chat [${INSTANCE_ID}]: Starting request`)
-
-  isProcessing = true
 
   try {
     updateMarkerAttributes(editor.outline.root)
@@ -100,7 +89,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     }
     return
   } finally {
-    isProcessing = false
+    return
   }
 }
 
