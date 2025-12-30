@@ -162,7 +162,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if isinstance(reasoning_effort, str):
                 reasoning_effort = reasoning_effort.lower()
             else:
-                reasoning_effort = None
+                reasoning_effort = "none"
 
             # Determine provider and get API key
             provider_name = body.get("provider") or get_provider_for_model(model)

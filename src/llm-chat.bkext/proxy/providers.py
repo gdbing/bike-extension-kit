@@ -22,6 +22,21 @@ def merge_assistant_runs(conversation: List[Message]) -> List[Message]:
     return merged
 
 
+def merge_same_role_runs(conversation: List[Message]) -> List[Message]:
+    merged: List[Message] = []
+    for message in conversation:
+        role = message.get("role", "").strip()
+        content = (message.get("content") or "").strip()
+        if not content:
+            continue
+
+        if merged and role and role == merged[-1].get("role"):
+            merged[-1]["content"] = (merged[-1]["content"].rstrip("\n") + "\n" + content)
+        else:
+            merged.append({"role": role, "content": content})
+    return merged
+
+
 class Provider:
     """Abstract provider contract."""
 
@@ -148,14 +163,14 @@ class OpenAIProvider(Provider):
     name = "openai"
 
     def prepare_messages(self, messages: List[Message]) -> Dict[str, Union[str, List[Message]]]:
-        # OpenAI can handle multiple systems; keep order as-is
-        conversation: List[Message] = []
-        for message in messages:
-            content = (message.get("content") or "").strip()
-            if not content:
-                continue
-            conversation.append({"role": message.get("role", "user"), "content": content})
-        return {"conversation": conversation}
+        # Responses API prefers instructions + alternating user/assistant turns.
+        system_messages = [m for m in messages if m.get("role") == "system"]
+        system_prompt = system_messages[-1].get("content", "").strip() if system_messages else ""
+
+        conversation = [m for m in messages if m.get("role") != "system"]
+        merged_conversation = merge_same_role_runs(conversation)
+
+        return {"instructions": system_prompt, "conversation": merged_conversation}
 
     def stream(
         self,
@@ -171,21 +186,24 @@ class OpenAIProvider(Provider):
     ) -> None:
         prepared = self.prepare_messages(messages)
         conversation = prepared["conversation"]
+        instructions = prepared["instructions"]
 
         body: Dict[str, Union[str, bool, float, int, List[Dict[str, str]], Dict[str, str]]] = {
             "model": model,
-            "messages": conversation,  # type: ignore
+            "input": conversation,  # type: ignore
             "stream": True,
         }
         if max_tokens:
-            body["max_completion_tokens"] = max_tokens
+            body["max_output_tokens"] = max_tokens
         if temperature is not None:
             body["temperature"] = temperature
         if reasoning_effort:
-            body["reasoning_effort"] = reasoning_effort
+            body["reasoning"] = {"effort": reasoning_effort}
+        if instructions:
+            body["instructions"] = instructions
 
         req = Request(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/responses",
             data=json.dumps(body).encode(),
             headers={
                 "Content-Type": "application/json",
@@ -212,14 +230,34 @@ class OpenAIProvider(Provider):
                                 return
                             try:
                                 parsed = json.loads(data)
-                                choices = parsed.get("choices") or []
-                                if choices:
-                                    delta = choices[0].get("delta") or {}
-                                    text = delta.get("content") or ""
+                                event_type = parsed.get("type")
+                                if event_type == "response.output_text.delta":
+                                    text = parsed.get("delta") or ""
                                     if text:
                                         with sessions_lock:
                                             if session_id in sessions:
                                                 sessions[session_id]["chunks"].append(text)
+                                if event_type == "response.error":
+                                    error_info = parsed.get("error") or {}
+                                    message = error_info.get("message") or str(error_info) or "Unknown error"
+                                    with sessions_lock:
+                                        if session_id in sessions:
+                                            sessions[session_id]["error"] = message
+                                            sessions[session_id]["done"] = True
+                                    return
+                                if event_type == "response.completed":
+                                    error_info = (parsed.get("response") or {}).get("error")
+                                    if error_info:
+                                        message = error_info.get("message") or str(error_info) or "Unknown error"
+                                        with sessions_lock:
+                                            if session_id in sessions:
+                                                sessions[session_id]["error"] = message
+                                                sessions[session_id]["done"] = True
+                                        return
+                                    with sessions_lock:
+                                        if session_id in sessions:
+                                            sessions[session_id]["done"] = True
+                                    return
                             except json.JSONDecodeError:
                                 pass
         except HTTPError as e:
