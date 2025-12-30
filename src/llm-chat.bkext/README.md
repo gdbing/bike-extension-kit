@@ -39,7 +39,7 @@ The server runs on `http://localhost:3033`. Keep it running while using the exte
 
 ## Configuration
 
-Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing or unsupported. Marker colors are configured under `ui.markerColors`.
+Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing or unsupported. The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host_permissions`. Marker colors are configured under `ui.markerColors`.
 
 The extension also provides an editor style named "LLM Chat" (Bike > Window > Style Sheets) to show marker colors and code styling.
 
@@ -97,7 +97,7 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 
 ```
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│    Bike     │ poll │   Python    │stream│  Anthropic  │
+│    Bike     │ poll │   Python    │stream│  Provider   │
 │  Extension  │<────>│   Server    │<────>│    API      │
 └─────────────┘      └─────────────┘      └─────────────┘
                      localhost:3033
