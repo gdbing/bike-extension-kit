@@ -1,5 +1,5 @@
 import { AppExtensionContext, CommandContext, OutlineEditor } from 'bike/app'
-import { config } from './config'
+import { getConfig } from './config'
 import { parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { HttpError, streamCompletion } from './providers/anthropic'
@@ -9,13 +9,14 @@ import { updateMarkerAttributes } from './marker-attributes'
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
 
-const SHOW_ERRORS_IN_OUTLINE = config.ui.showErrorsInOutline
-
-function getResponseMarkerText(settings: ReturnType<typeof parseConversationSettings>): string {
+function getResponseMarkerText(
+  settings: ReturnType<typeof parseConversationSettings>,
+  defaultModel?: string
+): string {
   const rawName =
     settings.modelMarker ??
     settings.model ??
-    config.requestDefaults.model
+    defaultModel
   if (!rawName) return '<assistant>'
 
   const trimmed = rawName.trim()
@@ -31,14 +32,17 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
   const selection = editor.selection
   if (!selection) return
 
+  let showErrorsInOutline = true
   const showInlineError = (message: string) => {
-    if (!SHOW_ERRORS_IN_OUTLINE) return
+    if (!showErrorsInOutline) return
     insertStaticResponse(editor.outline, selection.row, `Error: ${message}`, '<error>')
   }
 
   console.log(`LLM Chat [${INSTANCE_ID}]: Starting request`)
 
   try {
+    const config = getConfig()
+    showErrorsInOutline = config.ui.showErrorsInOutline
     updateMarkerAttributes(editor.outline.root)
 
     // Parse messages from document up to cursor
@@ -76,7 +80,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     })
 
     // Stream response into outline
-    const markerText = getResponseMarkerText(settings)
+    const markerText = getResponseMarkerText(settings, config.requestDefaults.model)
     await streamResponseToOutline(editor.outline, selection.row, tokenGenerator, markerText)
 
     return

@@ -28,6 +28,14 @@ interface BuildResult {
   byKey: Record<string, TestRow>
 }
 
+const MODEL_DEFINITIONS = [
+  { name: 'claude-haiku-4-5', provider: 'anthropic' },
+  { name: 'claude-sonnet-4-5', provider: 'anthropic' },
+  { name: 'claude-opus-4-5', provider: 'anthropic' },
+  { name: 'gpt-5.2', provider: 'openai' },
+  { name: 'gpt-5-mini', provider: 'openai' }
+]
+
 let idCounter = 0
 
 function buildOutline(nodes: OutlineNode[]): BuildResult {
@@ -98,7 +106,7 @@ test('resolves <model> against configured models and sets provider', () => {
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, 'claude-sonnet-4-5')
   assert.equal(result.modelMarker, 'sonnet 4.5')
@@ -132,7 +140,7 @@ test('config overrides model and adds other params with latest precedence', () =
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, 'custom-model')
   assert.equal(result.modelMarker, undefined)
@@ -159,7 +167,7 @@ test('first match wins for ambiguous model inputs', () => {
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, 'claude-sonnet-4-5')
   assert.equal(result.modelMarker, 'sonnet')
@@ -192,7 +200,7 @@ test('reports errors for unknown models and invalid config keys', () => {
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, undefined)
   assert.ok(result.errors.some(e => e.includes('Unknown model "unknown-model"')))
@@ -220,7 +228,7 @@ test('parses reasoningEffort when provided', () => {
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, 'gpt-5.2')
   assert.equal(result.modelMarker, undefined)
@@ -245,7 +253,7 @@ test('records model marker when <model> is present without config override', () 
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, 'claude-opus-4-5')
   assert.equal(result.modelMarker, 'opus')
@@ -275,7 +283,7 @@ test('clears model marker when config model overrides <model>', () => {
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, 'exact-model-name')
   assert.equal(result.modelMarker, undefined)
@@ -299,7 +307,7 @@ test('unknown fuzzy tokens still report an error', () => {
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.model, undefined)
   assert.ok(result.errors.some(e => e.includes('Unknown model "kimi"')))
@@ -327,7 +335,7 @@ test('settings after the cursor marker are ignored', () => {
   const stopRow = byKey['cursor']
   if (!stopRow) throw new Error('Missing stop row')
 
-  const result = parseConversationSettings(root as any, stopRow as any)
+  const result = parseConversationSettings(root as any, stopRow as any, MODEL_DEFINITIONS)
 
   assert.equal(result.maxTokens, 100)
 })

@@ -38,6 +38,8 @@ type PartialConfig = Partial<ExtensionConfig> & {
 
 const rawConfig = require('../config.json') as PartialConfig
 const rawManifest = require('../manifest.json') as { host_permissions?: string[] }
+let cachedConfig: ExtensionConfig | null = null
+let cachedError: Error | null = null
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -105,10 +107,6 @@ function assertConfig(value: PartialConfig): asserts value is ExtensionConfig {
   }
 }
 
-assertConfig(rawConfig)
-
-export const config: ExtensionConfig = rawConfig
-
 function isHostAllowedByManifest(server: ExtensionConfig['server']): boolean {
   const hostPermissions = rawManifest.host_permissions ?? []
   const protocol = server.protocol
@@ -135,15 +133,8 @@ function isHostAllowedByManifest(server: ExtensionConfig['server']): boolean {
   })
 }
 
-if (!isHostAllowedByManifest(config.server)) {
-  const target = `${config.server.protocol}://${config.server.host}:${config.server.port}`
-  throw new Error(
-    `llm-chat config server ${target} is not allowed by manifest host_permissions`
-  )
-}
-
 export function getServerBaseUrl(): string {
-  const { protocol, host, port } = config.server
+  const { protocol, host, port } = getConfig().server
   const portSegment = port ? `:${port}` : ''
   return `${protocol}://${host}${portSegment}`
 }
@@ -161,4 +152,25 @@ export function getChunksEndpoint(sessionId: string): string {
 export function getHealthEndpoint(): string {
   const base = getServerBaseUrl()
   return `${base}/health`
+}
+
+export function getConfig(): ExtensionConfig {
+  if (cachedConfig) return cachedConfig
+  if (cachedError) throw cachedError
+
+  try {
+    assertConfig(rawConfig)
+    const config = rawConfig as ExtensionConfig
+    if (!isHostAllowedByManifest(config.server)) {
+      const target = `${config.server.protocol}://${config.server.host}:${config.server.port}`
+      throw new Error(
+        `llm-chat config server ${target} is not allowed by manifest host_permissions`
+      )
+    }
+    cachedConfig = config
+    return config
+  } catch (error) {
+    cachedError = error instanceof Error ? error : new Error(String(error))
+    throw cachedError
+  }
 }

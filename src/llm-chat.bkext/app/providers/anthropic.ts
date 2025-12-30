@@ -1,7 +1,5 @@
-import { config, getChatEndpoint, getChunksEndpoint, getHealthEndpoint } from '../config'
+import { getChatEndpoint, getChunksEndpoint, getConfig, getHealthEndpoint } from '../config'
 import { Message, StreamOptions } from './types'
-
-const POLL_INTERVAL_MS = config.pollingIntervalMs
 
 export class HttpError extends Error {
   constructor(
@@ -53,6 +51,8 @@ export async function* streamCompletion(
   messages: Message[],
   options: StreamOptions = {}
 ): AsyncGenerator<string, void, unknown> {
+  const config = getConfig()
+  const pollIntervalMs = config.pollingIntervalMs
   const serverAvailable = await isServerRunning()
 
   if (!serverAvailable) {
@@ -107,7 +107,7 @@ export async function* streamCompletion(
 
   // Poll for chunks
   while (true) {
-    await sleep(POLL_INTERVAL_MS)
+    await sleep(pollIntervalMs)
 
     const pollResponse = await fetch(getChunksEndpoint(sessionId))
     if (!pollResponse.ok) {
@@ -132,7 +132,7 @@ export async function* streamCompletion(
 }
 
 function getServerBaseUrlDescription(): string {
-  const { protocol = 'http', host, port } = config.server
+  const { protocol, host, port } = getConfig().server
   const portSegment = port ? `:${port}` : ''
   return `${protocol}://${host}${portSegment}`
 }

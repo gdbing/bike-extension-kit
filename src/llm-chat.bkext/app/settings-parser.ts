@@ -1,5 +1,5 @@
 import type { Row } from 'bike/app'
-import { config } from './config'
+import { getConfig, ModelDefinition } from './config'
 
 export interface ConversationSettings {
   model?: string
@@ -11,13 +11,17 @@ export interface ConversationSettings {
   errors: string[]
 }
 
-const MODEL_DEFINITIONS = config.models
-const ALLOWED_PROVIDERS = new Set(MODEL_DEFINITIONS.map(model => model.provider))
 const ALLOWED_CONFIG_KEYS = new Set(['model', 'provider', 'maxTokens', 'temperature', 'reasoningEffort'])
 const ALLOWED_REASONING_EFFORT = new Set(['none', 'low', 'medium', 'high'])
 
-export function parseConversationSettings(root: Row, stopRow: Row): ConversationSettings {
+export function parseConversationSettings(
+  root: Row,
+  stopRow: Row,
+  modelDefinitions?: ModelDefinition[]
+): ConversationSettings {
+  const resolvedModelDefinitions = modelDefinitions ?? getConfig().models
   const settings: ConversationSettings = { errors: [] }
+  const allowedProviders = new Set(resolvedModelDefinitions.map(model => model.provider))
 
   // Walk stopRow up to the level-1 marker that contains it so we stop after that block
   let stopMarker: Row = stopRow
@@ -58,7 +62,7 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
         }
 
         if (markerName === 'config') {
-          const configResult = parseConfigBlock(row)
+          const configResult = parseConfigBlock(row, allowedProviders)
           settings.errors.push(...configResult.errors)
           if (configResult.values.model) {
             settings.model = configResult.values.model
@@ -86,7 +90,7 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
   }
 
   if (!settings.model && settings.modelMarker) {
-    const resolved = resolveModel(settings.modelMarker, settings.provider)
+    const resolved = resolveModel(settings.modelMarker, settings.provider, resolvedModelDefinitions)
     if (resolved.error) {
       settings.errors.push(resolved.error)
     } else if (resolved.model) {
@@ -100,7 +104,10 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
   return settings
 }
 
-function parseConfigBlock(markerRow: Row): {
+function parseConfigBlock(
+  markerRow: Row,
+  allowedProviders: Set<string>
+): {
   values: Partial<Omit<ConversationSettings, 'errors'>>
   errors: string[]
 } {
@@ -125,7 +132,7 @@ function parseConfigBlock(markerRow: Row): {
         if (!ALLOWED_CONFIG_KEYS.has(key)) {
           errors.push(`Unknown config key: ${key}`)
         } else {
-          applyConfig(values, key, valueRaw, errors)
+          applyConfig(values, key, valueRaw, errors, allowedProviders)
         }
       }
     }
@@ -140,7 +147,8 @@ function applyConfig(
   values: Partial<Omit<ConversationSettings, 'errors'>>,
   key: string,
   rawValue: string,
-  errors: string[]
+  errors: string[],
+  allowedProviders: Set<string>
 ): void {
   if (key === 'model') {
     if (!rawValue) {
@@ -153,7 +161,7 @@ function applyConfig(
 
   if (key === 'provider') {
     const provider = rawValue.toLowerCase()
-    if (!ALLOWED_PROVIDERS.has(provider)) {
+    if (!allowedProviders.has(provider)) {
       errors.push(`Unknown provider: ${rawValue}`)
     } else {
       values.provider = provider
@@ -194,7 +202,8 @@ function applyConfig(
 
 function resolveModel(
   input: string,
-  provider?: string
+  provider: string | undefined,
+  modelDefinitions: ModelDefinition[]
 ): { model?: string; provider?: string; error?: string } {
   const candidate = input.trim().toLowerCase()
   if (!candidate) {
@@ -202,8 +211,8 @@ function resolveModel(
   }
 
   const availableModels = provider
-    ? MODEL_DEFINITIONS.filter(model => model.provider === provider)
-    : MODEL_DEFINITIONS
+    ? modelDefinitions.filter(model => model.provider === provider)
+    : modelDefinitions
 
   const exactMatch = availableModels.find(model => model.name.toLowerCase() === candidate)
   if (exactMatch) {
