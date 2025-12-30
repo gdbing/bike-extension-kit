@@ -10,6 +10,7 @@
 - API type definitions are in `api/` (`api/app`, `api/dom`, `api/style`).
 - Tests live under `tests/` (LLM chat tests in `tests/llm-chat`).
 - Build and tooling scripts are in `scripts/` and TypeScript configs in `configs/`.
+
 ## Additional Documentation
 - Available docs for extra context: `app-context-tutorial.md`, `dom-context-tutorial.md`, `style-context-tutorial.md`, `creating-extensions.md`.
 
@@ -32,6 +33,8 @@
 - Run with `npm run test:llm-chat`.
 - Tests primarily demonstrate and lock in expected behavior; keep them readable and illustrative.
 - No global coverage requirement is defined; add tests when behavior changes.
+- Always run `npm run test:llm-chat` after making changes to code or unit tests.
+- Never change tests without explicit instruction or permission to do so, to avoid fixing tests instead of fixing implementation.
 
 ## Commit & Pull Request Guidelines
 - Commit messages use short, sentence-case summaries (e.g., “Add OpenAI provider…”).
