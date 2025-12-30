@@ -1,4 +1,5 @@
 import { Outline, Row } from 'bike/app'
+import { setMarkerAttribute } from './marker-attributes'
 
 /**
  * Find an existing marker row after the given row, or create a new one.
@@ -40,7 +41,9 @@ function prepareMarkerRow(
   afterRow: Row,
   markerText: string
 ): Row {
-  return findOrCreateMarkerRow(outline, afterRow, markerText)
+  const markerRow = findOrCreateMarkerRow(outline, afterRow, markerText)
+  setMarkerAttribute(markerRow, markerText)
+  return markerRow
 }
 
 export function insertStaticResponse(

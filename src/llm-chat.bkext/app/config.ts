@@ -14,6 +14,13 @@ export interface ExtensionConfig {
   }
   ui: {
     showErrorsInOutline: boolean
+    markerColors?: {
+      user?: string
+      system?: string
+      assistant?: string
+      error?: string
+      default?: string
+    }
   }
 }
 
@@ -30,7 +37,14 @@ const defaultConfig: ExtensionConfig = {
     maxTokens: 4096
   },
   ui: {
-    showErrorsInOutline: true
+    showErrorsInOutline: true,
+    markerColors: {
+      user: '#2F6FDB',
+      system: '#B25E00',
+      assistant: '#18794E',
+      error: '#C41C1C',
+      default: '#6B7280'
+    }
   }
 }
 

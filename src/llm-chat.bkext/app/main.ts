@@ -1,9 +1,10 @@
-import { AppExtensionContext, CommandContext } from 'bike/app'
+import { AppExtensionContext, CommandContext, OutlineEditor } from 'bike/app'
 import { config } from './config'
 import { parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { HttpError, streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
+import { updateMarkerAttributes } from './marker-attributes'
 
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
@@ -36,6 +37,8 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
   isProcessing = true
 
   try {
+    updateMarkerAttributes(editor.outline.root)
+
     // Parse messages from document up to cursor
     const messages = parseMessages(editor.outline.root, selection.row)
     const settings = parseConversationSettings(editor.outline.root, selection.row)
@@ -89,6 +92,28 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
 
 export async function activate(context: AppExtensionContext) {
   console.log(`LLM Chat: Activated (instance ${INSTANCE_ID})`)
+
+  let outlineObserver: { dispose: () => void } | undefined
+
+  const attachEditorObserver = (editor?: OutlineEditor) => {
+    outlineObserver?.dispose()
+    outlineObserver = undefined
+
+    if (!editor) return
+
+    updateMarkerAttributes(editor.outline.root)
+    outlineObserver = editor.outline.streamQuery('/body@text', () => {
+      updateMarkerAttributes(editor.outline.root)
+    })
+  }
+
+  attachEditorObserver(bike.frontmostOutlineEditor)
+
+  const editorObserver = bike.observeFrontmostOutlineEditor(attachEditorObserver)
+  context['llm-chat-editor-observer'] = editorObserver
+  context['llm-chat-outline-observer'] = {
+    dispose: () => outlineObserver?.dispose()
+  }
 
   // Register command
   bike.commands.addCommands({
