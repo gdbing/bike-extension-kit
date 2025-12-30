@@ -13,6 +13,7 @@
 - `npm run watch`: build all extensions and rebuild on changes (dev loop).
 - `npm run build`: production build of all extensions.
 - `npm run build-internals`: build internal API components.
+- `npm run typecheck`: typecheck app, dom, and style contexts without emitting output.
 - `npm run test:llm-chat`: compile and run the LLM chat test suite.
 
 ## Coding Style & Naming Conventions
