@@ -30,6 +30,7 @@
 ## Testing Guidelines
 - Current tests are TypeScript + Node-based (see `tests/llm-chat`).
 - Run with `npm run test:llm-chat`.
+- Tests primarily demonstrate and lock in expected behavior; keep them readable and illustrative.
 - No global coverage requirement is defined; add tests when behavior changes.
 
 ## Commit & Pull Request Guidelines

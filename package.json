@@ -10,7 +10,7 @@
     "build": "node scripts/build-extensions.mjs production",
     "build-internals": "node scripts/build-internals.mjs production",
     "typecheck": "tsc --noEmit --project src/llm-chat.bkext/tsconfig.app.json && tsc --noEmit --project src/llm-chat.bkext/tsconfig.dom.json && tsc --noEmit --project src/llm-chat.bkext/tsconfig.style.json",
-    "test:llm-chat": "tsc --project configs/tsconfig.tests.json --outDir out/tests/llm-chat && node out/tests/llm-chat/tests/llm-chat/run-tests.js"
+    "test:llm-chat": "tsc --project configs/tsconfig.tests.json --outDir out/tests/llm-chat && node out/tests/llm-chat/tests/llm-chat/run-tests.js && python3 src/llm-chat.bkext/proxy/providers_test.py"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
