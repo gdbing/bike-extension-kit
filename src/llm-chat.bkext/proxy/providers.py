@@ -1,10 +1,30 @@
 import json
+import time
 from typing import Dict, List, Optional, Union
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
 Message = Dict[str, str]
+
+
+def touch_session(sessions, session_id: str, sessions_lock, update_fn=None) -> None:
+    # Normalize session updates so long-polling clients are notified consistently.
+    with sessions_lock:
+        session = sessions.get(session_id)
+        if not session:
+            return
+        if update_fn:
+            update_fn(session)
+        session["last_access"] = time.time()
+        session["condition"].notify_all()
+
+
+def set_session_value(sessions, session_id: str, sessions_lock, key: str, value) -> None:
+    def update(session):
+        session[key] = value
+
+    touch_session(sessions, session_id, sessions_lock, update)
 
 
 def merge_assistant_runs(conversation: List[Message]) -> List[Message]:
@@ -138,25 +158,26 @@ class AnthropicProvider(Provider):
                                     if delta.get("type") == "text_delta":
                                         text = delta.get("text", "")
                                         if text:
-                                            with sessions_lock:
-                                                if session_id in sessions:
-                                                    sessions[session_id]["chunks"].append(text)
+                                            def add_chunk(session):
+                                                session["chunks"].append(text)
+
+                                            touch_session(sessions, session_id, sessions_lock, add_chunk)
                             except json.JSONDecodeError:
                                 pass
 
         except HTTPError as e:
             error_body = e.read().decode("utf-8")
-            with sessions_lock:
-                if session_id in sessions:
-                    sessions[session_id]["error"] = f"API error ({e.code}): {error_body}"
+            set_session_value(
+                sessions,
+                session_id,
+                sessions_lock,
+                "error",
+                f"API error ({e.code}): {error_body}"
+            )
         except Exception as e:
-            with sessions_lock:
-                if session_id in sessions:
-                    sessions[session_id]["error"] = str(e)
+            set_session_value(sessions, session_id, sessions_lock, "error", str(e))
         finally:
-            with sessions_lock:
-                if session_id in sessions:
-                    sessions[session_id]["done"] = True
+            set_session_value(sessions, session_id, sessions_lock, "done", True)
 
 
 class OpenAIProvider(Provider):
@@ -234,45 +255,52 @@ class OpenAIProvider(Provider):
                                 if event_type == "response.output_text.delta":
                                     text = parsed.get("delta") or ""
                                     if text:
-                                        with sessions_lock:
-                                            if session_id in sessions:
-                                                sessions[session_id]["chunks"].append(text)
+                                        def add_chunk(session):
+                                            session["chunks"].append(text)
+
+                                        touch_session(sessions, session_id, sessions_lock, add_chunk)
                                 if event_type == "response.error":
                                     error_info = parsed.get("error") or {}
                                     message = error_info.get("message") or str(error_info) or "Unknown error"
-                                    with sessions_lock:
-                                        if session_id in sessions:
-                                            sessions[session_id]["error"] = message
-                                            sessions[session_id]["done"] = True
+                                    def set_error(session):
+                                        session["error"] = message
+                                        session["done"] = True
+
+                                    touch_session(sessions, session_id, sessions_lock, set_error)
                                     return
                                 if event_type == "response.completed":
                                     error_info = (parsed.get("response") or {}).get("error")
                                     if error_info:
                                         message = error_info.get("message") or str(error_info) or "Unknown error"
-                                        with sessions_lock:
-                                            if session_id in sessions:
-                                                sessions[session_id]["error"] = message
-                                                sessions[session_id]["done"] = True
+                                        def set_error(session):
+                                            session["error"] = message
+                                            session["done"] = True
+
+                                        touch_session(sessions, session_id, sessions_lock, set_error)
                                         return
-                                    with sessions_lock:
-                                        if session_id in sessions:
-                                            sessions[session_id]["done"] = True
+                                    set_session_value(
+                                        sessions,
+                                        session_id,
+                                        sessions_lock,
+                                        "done",
+                                        True
+                                    )
                                     return
                             except json.JSONDecodeError:
                                 pass
         except HTTPError as e:
             error_body = e.read().decode("utf-8")
-            with sessions_lock:
-                if session_id in sessions:
-                    sessions[session_id]["error"] = f"API error ({e.code}): {error_body}"
+            set_session_value(
+                sessions,
+                session_id,
+                sessions_lock,
+                "error",
+                f"API error ({e.code}): {error_body}"
+            )
         except Exception as e:
-            with sessions_lock:
-                if session_id in sessions:
-                    sessions[session_id]["error"] = str(e)
+            set_session_value(sessions, session_id, sessions_lock, "error", str(e))
         finally:
-            with sessions_lock:
-                if session_id in sessions:
-                    sessions[session_id]["done"] = True
+            set_session_value(sessions, session_id, sessions_lock, "done", True)
 
 
 providers = {

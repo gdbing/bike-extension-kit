@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -108,6 +109,11 @@ REQUEST_DEFAULTS = CONFIG.get("requestDefaults", {})
 
 PORT = int(SERVER_CONFIG["port"])
 HOST = SERVER_CONFIG["host"]
+
+# Long-polling and cleanup configuration
+LONG_POLL_TIMEOUT_SECONDS = 25
+SESSION_TTL_SECONDS = 600
+CLEANUP_INTERVAL_SECONDS = 60
 
 # Default model settings
 DEFAULT_MODEL = REQUEST_DEFAULTS["model"]
@@ -245,7 +251,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
             session_id = str(uuid.uuid4())[:8]
             print(f"[Server] New session: {session_id} (model: {model})")
             with sessions_lock:
-                sessions[session_id] = {"chunks": [], "done": False, "error": None}
+                # Each session has a condition so /chunks can long-poll for new data.
+                sessions[session_id] = {
+                    "chunks": [],
+                    "done": False,
+                    "error": None,
+                    "last_access": time.time(),
+                    "condition": threading.Condition(sessions_lock)
+                }
 
             # Start streaming in background thread
             thread = threading.Thread(
@@ -268,6 +281,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if not session:
                     self.send_json({"error": "Session not found"}, 404)
                     return
+
+                session["last_access"] = time.time()
+
+                # Long-poll for up to the timeout if there is no data yet.
+                if not session["chunks"] and not session["done"] and not session["error"]:
+                    session["condition"].wait(timeout=LONG_POLL_TIMEOUT_SECONDS)
 
                 # Get and clear chunks
                 chunks = session["chunks"]
@@ -293,6 +312,24 @@ class ProxyHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     print(f"LLM Chat Server starting on http://{HOST}:{PORT}")
     print("   Press Ctrl+C to stop\n")
+
+    def cleanup_sessions():
+        while True:
+            time.sleep(CLEANUP_INTERVAL_SECONDS)
+            now = time.time()
+            with sessions_lock:
+                # Drop sessions that have gone idle without polling to avoid leaks.
+                stale_ids = [
+                    session_id
+                    for session_id, session in sessions.items()
+                    if now - session.get("last_access", now) > SESSION_TTL_SECONDS
+                ]
+                for session_id in stale_ids:
+                    del sessions[session_id]
+
+    cleanup_thread = threading.Thread(target=cleanup_sessions, daemon=True)
+    cleanup_thread.start()
+
     server = HTTPServer((HOST, PORT), ProxyHandler)
     try:
         server.serve_forever()
