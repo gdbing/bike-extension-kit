@@ -1,0 +1,8 @@
+{
+  "extends": "../../api/style/tsconfig.json",
+  "include": ["./style/**/*"],
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true
+  }
+}

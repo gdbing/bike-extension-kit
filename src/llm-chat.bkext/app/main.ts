@@ -14,12 +14,12 @@ let isProcessing = false
 
 const SHOW_ERRORS_IN_OUTLINE = config.ui.showErrorsInOutline
 
-async function sendMessageCommand(context: CommandContext): Promise<boolean> {
+async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
   const editor = context.editor
-  if (!editor) return false
+  if (!editor) return
 
   const selection = editor.selection
-  if (!selection) return false
+  if (!selection) return
 
   const showInlineError = (message: string) => {
     if (!SHOW_ERRORS_IN_OUTLINE) return
@@ -29,7 +29,7 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
   // Prevent concurrent requests
   if (isProcessing) {
     console.log(`LLM Chat [${INSTANCE_ID}]: Already processing a request, please wait...`)
-    return true
+    return
   }
 
   console.log(`LLM Chat [${INSTANCE_ID}]: Starting request`)
@@ -47,13 +47,13 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
       const message = settings.errors.join('\n')
       console.log(`LLM Chat: ${message}`)
       showInlineError(message)
-      return true
+      return
     }
 
     if (messages.length === 0) {
       console.log('LLM Chat: No messages found. Add <user> or <system> markers.')
       showInlineError('No messages found. Add <user> or <system> markers.')
-      return true
+      return
     }
 
     // Check we have at least one user message
@@ -61,7 +61,7 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
     if (!hasUserMessage) {
       console.log('LLM Chat: No <user> message found.')
       showInlineError('No <user> message found.')
-      return true
+      return
     }
 
     // Stream completion from server
@@ -76,7 +76,7 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
     // Stream response into outline
     await streamResponseToOutline(editor.outline, selection.row, tokenGenerator)
 
-    return true
+    return
   } catch (error) {
     console.error('LLM Chat error:', error)
     if (error instanceof HttpError) {
@@ -84,10 +84,16 @@ async function sendMessageCommand(context: CommandContext): Promise<boolean> {
     } else if (error instanceof Error) {
       showInlineError(error.message)
     }
-    return true
+    return
   } finally {
     isProcessing = false
   }
+}
+
+function sendMessageCommand(context: CommandContext): boolean {
+  if (!context.editor || !context.editor.selection) return false
+  void sendMessageCommandAsync(context)
+  return true
 }
 
 export async function activate(context: AppExtensionContext) {

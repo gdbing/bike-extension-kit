@@ -2,6 +2,7 @@
 
 ## Project Structure & Module Organization
 - Active development for this repo is focused on `src/llm-chat.bkext/`; other extensions and docs serve as reference context.
+- Avoid changes outside `src/llm-chat.bkext/` unless explicitly approved.
 - Extensions live in `src/` as `*.bkext` folders. Each extension can include `app/`, `dom/`, `style/`, `theme/`, and a `manifest.json`.
 - Build output is written to `out/extensions/`.
 - API type definitions are in `api/` (`api/app`, `api/dom`, `api/style`).
@@ -13,7 +14,7 @@
 - `npm run watch`: build all extensions and rebuild on changes (dev loop).
 - `npm run build`: production build of all extensions.
 - `npm run build-internals`: build internal API components.
-- `npm run typecheck`: typecheck app, dom, and style contexts without emitting output.
+- `npm run typecheck`: typecheck `src/llm-chat.bkext/` app/dom/style contexts only.
 - `npm run test:llm-chat`: compile and run the LLM chat test suite.
 
 ## Coding Style & Naming Conventions

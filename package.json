@@ -9,7 +9,7 @@
     "watch": "node scripts/build-extensions.mjs",
     "build": "node scripts/build-extensions.mjs production",
     "build-internals": "node scripts/build-internals.mjs production",
-    "typecheck": "tsc --noEmit --project configs/tsconfig.app.json && tsc --noEmit --project configs/tsconfig.dom.json && tsc --noEmit --project configs/tsconfig.style.json",
+    "typecheck": "tsc --noEmit --project src/llm-chat.bkext/tsconfig.app.json && tsc --noEmit --project src/llm-chat.bkext/tsconfig.dom.json && tsc --noEmit --project src/llm-chat.bkext/tsconfig.style.json",
     "test:llm-chat": "tsc --project configs/tsconfig.tests.json --outDir out/tests/llm-chat && node out/tests/llm-chat/tests/llm-chat/run-tests.js"
   },
   "devDependencies": {

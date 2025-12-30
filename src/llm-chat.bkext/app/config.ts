@@ -1,4 +1,4 @@
-import configJson from '../config.json'
+declare function require(path: string): any
 
 export interface ExtensionConfig {
   server: {
@@ -54,7 +54,7 @@ type PartialConfig = Partial<ExtensionConfig> & {
   ui?: Partial<ExtensionConfig['ui']>
 }
 
-const rawConfig = configJson as PartialConfig
+const rawConfig = require('../config.json') as PartialConfig
 
 // Merge defaults with the JSON file while keeping types safe
 export const config: ExtensionConfig = {
