@@ -1,6 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
+- Active development for this repo is focused on `src/llm-chat.bkext/`; other extensions and docs serve as reference context.
 - Extensions live in `src/` as `*.bkext` folders. Each extension can include `app/`, `dom/`, `style/`, `theme/`, and a `manifest.json`.
 - Build output is written to `out/extensions/`.
 - API type definitions are in `api/` (`api/app`, `api/dom`, `api/style`).
