@@ -7,6 +7,7 @@ import { Message } from './providers/types'
  * - Markers must be at level 1 (root children) and match <name> pattern
  * - <user> → user role, <system> → system role
  * - Any other <name> marker (including <assistant>, model names) → assistant role
+ * - <model> and <config> markers are ignored (used for settings only)
  * - Only content nested under a marker is included in that message
  * - Note-type rows are skipped (treated as comments)
  * - The entire message containing stopRow is included, not just content up to stopRow
@@ -61,6 +62,11 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
           role = 'user'
         } else if (markerName === 'system') {
           role = 'system'
+        } else if (markerName === 'model' || markerName === 'config') {
+          currentMessage = null
+          markerRow = null
+          row = nextRowAfterSubtree(row)
+          continue
         } else {
           role = 'assistant'
         }

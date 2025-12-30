@@ -71,10 +71,11 @@ export function insertStaticResponse(
 export async function streamResponseToOutline(
   outline: Outline,
   afterRow: Row,
-  tokenGenerator: AsyncGenerator<string, void, unknown>
+  tokenGenerator: AsyncGenerator<string, void, unknown>,
+  markerText = '<assistant>'
 ): Promise<void> {
   // Find or create assistant heading
-  const assistantRow = prepareMarkerRow(outline, afterRow, '<assistant>')
+  const assistantRow = prepareMarkerRow(outline, afterRow, markerText)
 
   // Create initial content row
   let currentRow = outline.insertRows(

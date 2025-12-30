@@ -250,6 +250,39 @@ test('defaults non-user/system markers to assistant role', () => {
   ])
 })
 
+test('ignores <model> and <config> markers for message parsing', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<model>',
+      key: 'model-marker',
+      children: [{ text: 'sonnet', key: 'model-line' }]
+    },
+    {
+      text: '<config>',
+      key: 'config-marker',
+      children: [{ text: 'model: gpt-5-mini', key: 'config-line' }]
+    },
+    {
+      text: '<user>',
+      key: 'user-marker',
+      children: [{ text: 'Hello', key: 'user-line' }]
+    }
+  ])
+
+  const stopRow = byKey['user-line']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages, [
+    {
+      role: 'user',
+      content: 'Hello\n'
+    }
+  ])
+})
+
 test('ignores indented markers; only level-1 markers start messages', () => {
   const { root, byKey } = buildOutline([
     {

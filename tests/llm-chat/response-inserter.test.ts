@@ -17,6 +17,9 @@ interface FakeRow {
   nextSibling?: FakeRow
   children: FakeRow[]
   type?: RowType
+  attributes?: Record<string, string>
+  setAttribute?(key: string, value: string): void
+  removeAttribute?(key: string): void
 }
 
 class FakeOutline {
@@ -88,6 +91,7 @@ function createRow(text: string, parent?: FakeRow, type: RowType = 'row', level?
     }
   }
 
+  const attributes: Record<string, string> = {}
   return {
     id: `row-${++idCounter}`,
     text: fakeText,
@@ -95,7 +99,14 @@ function createRow(text: string, parent?: FakeRow, type: RowType = 'row', level?
     level: level ?? (parent ? parent.level + 1 : 1),
     parent,
     children: [],
-    nextSibling: undefined
+    nextSibling: undefined,
+    attributes,
+    setAttribute(key, value) {
+      attributes[key] = value
+    },
+    removeAttribute(key) {
+      delete attributes[key]
+    }
   }
 }
 

@@ -46,7 +46,7 @@ The extension also provides an editor style named "LLM Chat" (Bike > Window > St
 
 3. Press `Shift+Cmd+L` to send (or run **LLM Chat: Send** from the command palette)
 
-The response will stream in under an `<assistant>` heading.
+The response will stream in under a model heading (for example, `<sonnet>` if `<model>` is set to `sonnet`, or the exact model name when using defaults/config).
 
 ## Example Document
 
@@ -58,7 +58,7 @@ The response will stream in under an `<assistant>` heading.
   What is the capital of France?
 ```
 
-After pressing `Shift+Cmd+L`, an `<assistant>` block will be added with the response.
+After pressing `Shift+Cmd+L`, a model-named block will be added with the response.
 
 ## Features
 

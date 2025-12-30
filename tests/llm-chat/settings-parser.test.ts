@@ -101,6 +101,7 @@ test('resolves <model> aliases against known models', () => {
   const result = parseConversationSettings(root as any, stopRow as any)
 
   assert.equal(result.model, 'claude-sonnet-4-5')
+  assert.equal(result.modelMarker, 'sonnet')
   assert.deepEqual(result.errors, [])
 })
 
@@ -133,6 +134,7 @@ test('config overrides model and adds other params with latest precedence', () =
   const result = parseConversationSettings(root as any, stopRow as any)
 
   assert.equal(result.model, 'custom-model')
+  assert.equal(result.modelMarker, undefined)
   assert.equal(result.maxTokens, 512)
   assert.equal(result.temperature, 1.2)
   assert.equal(result.reasoningEffort, undefined)
@@ -159,6 +161,7 @@ test('fuzzy model matching matches tokens in order', () => {
   const result = parseConversationSettings(root as any, stopRow as any)
 
   assert.equal(result.model, 'claude-sonnet-3-7')
+  assert.equal(result.modelMarker, 'sonnet 3.7')
   assert.deepEqual(result.errors, [])
 })
 
@@ -218,7 +221,61 @@ test('parses reasoningEffort when provided', () => {
   const result = parseConversationSettings(root as any, stopRow as any)
 
   assert.equal(result.model, 'gpt-5.2')
+  assert.equal(result.modelMarker, undefined)
   assert.equal(result.reasoningEffort, 'medium')
+  assert.deepEqual(result.errors, [])
+})
+
+test('records model marker when <model> is present without config override', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<model>',
+      key: 'model',
+      children: [{ text: 'opus', key: 'model-line' }]
+    },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Hi', key: 'cursor' }]
+    }
+  ])
+
+  const stopRow = byKey['cursor']
+  if (!stopRow) throw new Error('Missing stop row')
+
+  const result = parseConversationSettings(root as any, stopRow as any)
+
+  assert.equal(result.model, 'claude-opus-4-5')
+  assert.equal(result.modelMarker, 'opus')
+  assert.deepEqual(result.errors, [])
+})
+
+test('clears model marker when config model overrides <model>', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<model>',
+      key: 'model',
+      children: [{ text: 'haiku', key: 'model-line' }]
+    },
+    {
+      text: '<config>',
+      key: 'config',
+      children: [{ text: 'model: exact-model-name', key: 'conf-model' }]
+    },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Hi', key: 'cursor' }]
+    }
+  ])
+
+  const stopRow = byKey['cursor']
+  if (!stopRow) throw new Error('Missing stop row')
+
+  const result = parseConversationSettings(root as any, stopRow as any)
+
+  assert.equal(result.model, 'exact-model-name')
+  assert.equal(result.modelMarker, undefined)
   assert.deepEqual(result.errors, [])
 })
 

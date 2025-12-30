@@ -14,6 +14,19 @@ let isProcessing = false
 
 const SHOW_ERRORS_IN_OUTLINE = config.ui.showErrorsInOutline
 
+function getResponseMarkerText(settings: ReturnType<typeof parseConversationSettings>): string {
+  const rawName =
+    settings.modelMarker ??
+    settings.model ??
+    config.requestDefaults.model
+  if (!rawName) return '<assistant>'
+
+  const trimmed = rawName.trim()
+  const match = trimmed.match(/^<([^>]+)>$/)
+  const name = match ? match[1] : trimmed
+  return `<${name}>`
+}
+
 async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
   const editor = context.editor
   if (!editor) return
@@ -74,7 +87,8 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     })
 
     // Stream response into outline
-    await streamResponseToOutline(editor.outline, selection.row, tokenGenerator)
+    const markerText = getResponseMarkerText(settings)
+    await streamResponseToOutline(editor.outline, selection.row, tokenGenerator, markerText)
 
     return
   } catch (error) {

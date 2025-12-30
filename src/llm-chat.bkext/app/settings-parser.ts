@@ -2,6 +2,7 @@ import type { Row } from 'bike/app'
 
 export interface ConversationSettings {
   model?: string
+  modelMarker?: string
   provider?: string
   maxTokens?: number
   temperature?: number
@@ -70,6 +71,7 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
               settings.errors.push(resolved.error)
             } else if (resolved.model) {
               settings.model = resolved.model
+              settings.modelMarker = modelValue
             }
           }
           row = nextRowAfterSubtree(row)
@@ -81,6 +83,7 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
           settings.errors.push(...configResult.errors)
           if (configResult.values.model) {
             settings.model = configResult.values.model
+            settings.modelMarker = undefined
           }
           if (configResult.values.provider) {
             settings.provider = configResult.values.provider
