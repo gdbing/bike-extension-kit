@@ -81,12 +81,12 @@ function buildOutline(nodes: OutlineNode[]): BuildResult {
   return { root, byKey }
 }
 
-test('resolves <model> aliases against known models', () => {
+test('resolves <model> against configured models and sets provider', () => {
   const { root, byKey } = buildOutline([
     {
       text: '<model>',
       key: 'model',
-      children: [{ text: 'sonnet', key: 'model-value' }]
+      children: [{ text: 'sonnet 4.5', key: 'model-value' }]
     },
     {
       text: '<user>',
@@ -101,7 +101,8 @@ test('resolves <model> aliases against known models', () => {
   const result = parseConversationSettings(root as any, stopRow as any)
 
   assert.equal(result.model, 'claude-sonnet-4-5')
-  assert.equal(result.modelMarker, 'sonnet')
+  assert.equal(result.modelMarker, 'sonnet 4.5')
+  assert.equal(result.provider, 'anthropic')
   assert.deepEqual(result.errors, [])
 })
 
@@ -141,12 +142,12 @@ test('config overrides model and adds other params with latest precedence', () =
   assert.deepEqual(result.errors, [])
 })
 
-test('fuzzy model matching matches tokens in order', () => {
+test('first match wins for ambiguous model inputs', () => {
   const { root, byKey } = buildOutline([
     {
       text: '<model>',
       key: 'model',
-      children: [{ text: 'sonnet 3.7', key: 'model-line' }]
+      children: [{ text: 'sonnet', key: 'model-line' }]
     },
     {
       text: '<user>',
@@ -160,12 +161,13 @@ test('fuzzy model matching matches tokens in order', () => {
 
   const result = parseConversationSettings(root as any, stopRow as any)
 
-  assert.equal(result.model, 'claude-sonnet-3-7')
-  assert.equal(result.modelMarker, 'sonnet 3.7')
+  assert.equal(result.model, 'claude-sonnet-4-5')
+  assert.equal(result.modelMarker, 'sonnet')
+  assert.equal(result.provider, 'anthropic')
   assert.deepEqual(result.errors, [])
 })
 
-test('reports errors for unknown model alias and invalid config keys', () => {
+test('reports errors for unknown models and invalid config keys', () => {
   const { root, byKey } = buildOutline([
     {
       text: '<model>',
@@ -247,6 +249,7 @@ test('records model marker when <model> is present without config override', () 
 
   assert.equal(result.model, 'claude-opus-4-5')
   assert.equal(result.modelMarker, 'opus')
+  assert.equal(result.provider, 'anthropic')
   assert.deepEqual(result.errors, [])
 })
 

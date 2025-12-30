@@ -35,23 +35,85 @@ def load_config() -> dict:
     try:
         with CONFIG_PATH.open("r", encoding="utf-8") as handle:
             return json.load(handle)
-    except FileNotFoundError:
-        print("[Config] config.json not found, using defaults")
+    except FileNotFoundError as error:
+        raise RuntimeError("[Config] config.json not found") from error
     except json.JSONDecodeError as error:
-        print(f"[Config] Failed to parse config.json: {error}")
-    return {}
+        raise RuntimeError(f"[Config] Failed to parse config.json: {error}") from error
+
+
+def _is_non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and value.strip() != ""
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def validate_config(config: dict) -> None:
+    errors = []
+    server_config = config.get("server")
+    if not isinstance(server_config, dict):
+        errors.append("Missing server configuration")
+    else:
+        if not _is_non_empty_string(server_config.get("host")):
+            errors.append("server.host must be a non-empty string")
+        protocol = server_config.get("protocol")
+        if not _is_non_empty_string(protocol):
+            errors.append("server.protocol must be a non-empty string")
+        elif protocol not in ("http", "https"):
+            errors.append("server.protocol must be http or https")
+        if not _is_number(server_config.get("port")):
+            errors.append("server.port must be a number")
+        if not isinstance(server_config.get("basePath"), str):
+            errors.append("server.basePath must be a string (can be empty)")
+
+    if not _is_number(config.get("pollingIntervalMs")):
+        errors.append("pollingIntervalMs must be a number")
+
+    request_defaults = config.get("requestDefaults")
+    if not isinstance(request_defaults, dict):
+        errors.append("Missing requestDefaults configuration")
+    else:
+        if not _is_non_empty_string(request_defaults.get("model")):
+            errors.append("requestDefaults.model must be a non-empty string")
+        if not _is_number(request_defaults.get("maxTokens")):
+            errors.append("requestDefaults.maxTokens must be a number")
+
+    models = config.get("models")
+    if not isinstance(models, list) or len(models) == 0:
+        errors.append("models must be a non-empty array")
+    else:
+        for index, model in enumerate(models):
+            if not isinstance(model, dict):
+                errors.append(f"models[{index}] must be an object")
+                continue
+            if not _is_non_empty_string(model.get("name")):
+                errors.append(f"models[{index}].name must be a non-empty string")
+            if not _is_non_empty_string(model.get("provider")):
+                errors.append(f"models[{index}].provider must be a non-empty string")
+
+    ui = config.get("ui")
+    if not isinstance(ui, dict):
+        errors.append("Missing ui configuration")
+    elif not isinstance(ui.get("showErrorsInOutline"), bool):
+        errors.append("ui.showErrorsInOutline must be a boolean")
+
+    if errors:
+        message = "\n- ".join(errors)
+        raise RuntimeError(f"[Config] Invalid config.json:\n- {message}")
 
 
 CONFIG = load_config()
+validate_config(CONFIG)
 SERVER_CONFIG = CONFIG.get("server", {})
 REQUEST_DEFAULTS = CONFIG.get("requestDefaults", {})
 
-PORT = int(SERVER_CONFIG.get("port", 3033) or 3033)
-HOST = SERVER_CONFIG.get("host", "localhost")
+PORT = int(SERVER_CONFIG["port"])
+HOST = SERVER_CONFIG["host"]
 
 # Default model settings
-DEFAULT_MODEL = REQUEST_DEFAULTS.get("model", "claude-3-5-haiku-20241022")
-DEFAULT_MAX_TOKENS = REQUEST_DEFAULTS.get("maxTokens", 4096)
+DEFAULT_MODEL = REQUEST_DEFAULTS["model"]
+DEFAULT_MAX_TOKENS = REQUEST_DEFAULTS["maxTokens"]
 
 
 def get_api_key(provider: str) -> Optional[str]:

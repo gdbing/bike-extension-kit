@@ -1,4 +1,5 @@
 import type { Row } from 'bike/app'
+import { config } from './config'
 
 export interface ConversationSettings {
   model?: string
@@ -10,24 +11,8 @@ export interface ConversationSettings {
   errors: string[]
 }
 
-const KNOWN_MODELS = [
-  'claude-haiku-4-5',
-  'claude-sonnet-3-7',
-  'claude-sonnet-4-5',
-  'claude-opus-4-5',
-  'gpt-5.2',
-  'gpt-5-mini'
-]
-
-const MODEL_ALIASES: Record<string, string> = {
-  haiku: 'claude-haiku-4-5',
-  sonnet: 'claude-sonnet-4-5',
-  opus: 'claude-opus-4-5',
-  'gpt-5.2': 'gpt-5.2',
-  'gpt-5-mini': 'gpt-5-mini'
-}
-
-const ALLOWED_PROVIDERS = new Set(['anthropic', 'openai'])
+const MODEL_DEFINITIONS = config.models
+const ALLOWED_PROVIDERS = new Set(MODEL_DEFINITIONS.map(model => model.provider))
 const ALLOWED_CONFIG_KEYS = new Set(['model', 'provider', 'maxTokens', 'temperature', 'reasoningEffort'])
 const ALLOWED_REASONING_EFFORT = new Set(['none', 'low', 'medium', 'high'])
 
@@ -66,13 +51,7 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
           if (!modelValue) {
             settings.errors.push('Empty <model> marker')
           } else {
-            const resolved = resolveModel(modelValue)
-            if (resolved.error) {
-              settings.errors.push(resolved.error)
-            } else if (resolved.model) {
-              settings.model = resolved.model
-              settings.modelMarker = modelValue
-            }
+            settings.modelMarker = modelValue
           }
           row = nextRowAfterSubtree(row)
           continue
@@ -104,6 +83,18 @@ export function parseConversationSettings(root: Row, stopRow: Row): Conversation
     }
 
     row = row.nextInOutline
+  }
+
+  if (!settings.model && settings.modelMarker) {
+    const resolved = resolveModel(settings.modelMarker, settings.provider)
+    if (resolved.error) {
+      settings.errors.push(resolved.error)
+    } else if (resolved.model) {
+      settings.model = resolved.model
+      if (resolved.provider) {
+        settings.provider = resolved.provider
+      }
+    }
   }
 
   return settings
@@ -201,27 +192,29 @@ function applyConfig(
   }
 }
 
-function resolveModel(input: string): { model?: string; error?: string } {
+function resolveModel(
+  input: string,
+  provider?: string
+): { model?: string; provider?: string; error?: string } {
   const candidate = input.trim().toLowerCase()
   if (!candidate) {
     return { error: 'Empty <model> marker' }
   }
 
-  // Exact match
-  const exact = KNOWN_MODELS.find(m => m.toLowerCase() == candidate)
-  if (exact) return { model: exact }
+  const availableModels = provider
+    ? MODEL_DEFINITIONS.filter(model => model.provider === provider)
+    : MODEL_DEFINITIONS
 
-  // Alias match
-  const alias = MODEL_ALIASES[candidate]
-  if (alias) return { model: alias }
-
-  // Substring match across known models
-  const matches = KNOWN_MODELS.filter(m => m.toLowerCase().includes(candidate))
-  if (matches.length === 1) {
-    return { model: matches[0] }
+  const exactMatch = availableModels.find(model => model.name.toLowerCase() === candidate)
+  if (exactMatch) {
+    return { model: exactMatch.name, provider: exactMatch.provider }
   }
-  if (matches.length > 1) {
-    return { error: `Ambiguous model "${input}": ${matches.join(', ')}` }
+
+  const substringMatch = availableModels.find(model =>
+    model.name.toLowerCase().includes(candidate)
+  )
+  if (substringMatch) {
+    return { model: substringMatch.name, provider: substringMatch.provider }
   }
 
   // Fuzzy token-in-order match: all tokens (len > 1) must appear in order
@@ -229,9 +222,9 @@ function resolveModel(input: string): { model?: string; error?: string } {
     .split(/[^a-z0-9]+/)
     .filter(token => token && (token.length > 1 || /^\d+$/.test(token)))
   if (tokens.length) {
-    const fuzzyMatches = KNOWN_MODELS.filter(model => {
+    const fuzzyMatch = availableModels.find(model => {
       let start = 0
-      const lowerModel = model.toLowerCase()
+      const lowerModel = model.name.toLowerCase()
       for (const token of tokens) {
         const index = lowerModel.indexOf(token, start)
         if (index === -1) return false
@@ -240,11 +233,8 @@ function resolveModel(input: string): { model?: string; error?: string } {
       return true
     })
 
-    if (fuzzyMatches.length === 1) {
-      return { model: fuzzyMatches[0] }
-    }
-    if (fuzzyMatches.length > 1) {
-      return { error: `Ambiguous model "${input}": ${fuzzyMatches.join(', ')}` }
+    if (fuzzyMatch) {
+      return { model: fuzzyMatch.name, provider: fuzzyMatch.provider }
     }
   }
 

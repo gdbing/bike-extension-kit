@@ -1,6 +1,6 @@
 # LLM Chat
 
-Chat with Claude directly in your Bike outlines.
+Chat with LLM models directly in your Bike outlines.
 
 ## Setup
 
@@ -13,10 +13,19 @@ The server retrieves API keys automatically from:
    llm keys set anthropic
    # Paste your key when prompted
    ```
+   For OpenAI:
+   ```bash
+   llm keys set openai
+   # Paste your key when prompted
+   ```
 
 2. **Environment variable** (fallback):
    ```bash
    export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+   ```
+   For OpenAI:
+   ```bash
+   export OPENAI_API_KEY="sk-your-key-here"
    ```
 
 ### 2. Start the server
@@ -30,7 +39,7 @@ The server runs on `http://localhost:3033`. Keep it running while using the exte
 
 ## Configuration
 
-Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, or default model parameters. The extension reads these values at runtime. Marker colors are configured under `ui.markerColors`.
+Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing. Marker colors are configured under `ui.markerColors`.
 
 The extension also provides an editor style named "LLM Chat" (Bike > Window > Style Sheets) to show marker colors and code styling.
 
@@ -79,10 +88,10 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 
 ### Outline Config Markers
 
-- `<model>`: first non-empty line under the marker is matched (case-insensitive) against known models/aliases (`haiku`, `sonnet`, `opus`, etc.). Errors if unknown/ambiguous.
-- `<config>`: root-level marker with `key: value` lines (simple scalars). Allowed keys: `model` (exact string, no alias resolution), `provider` (`anthropic`/`openai`), `maxTokens` (positive number), `temperature` (0–2), `reasoningEffort` (`none`/`low`/`medium`/`high` for OpenAI). Unknown keys or invalid values raise errors.
+- `<model>`: first non-empty line under the marker is matched (case-insensitive) against the ordered `models` list in `config.json`. The first match wins; unknown models raise errors. The provider is selected automatically from the matched model (or constrained by `<config>` `provider` if set).
+- `<config>`: root-level marker with `key: value` lines (simple scalars). Allowed keys: `model` (exact string), `provider` (from the configured `models` list), `maxTokens` (positive number), `temperature` (0–2), `reasoningEffort` (`none`/`low`/`medium`/`high` for OpenAI). Unknown keys or invalid values raise errors.
 - Multiple markers are merged in document order; later values win. Markers after the cursor row are ignored.
-- Fuzzy model matching: `<model>` also supports in-order token matching (e.g., `sonnet 3.7` matches `claude-sonnet-3-7`), but unknown/ambiguous inputs raise errors.
+- Fuzzy model matching: `<model>` also supports in-order token matching (e.g., `sonnet 4.5` matches `claude-sonnet-4-5`).
 
 ## Architecture
 
@@ -102,7 +111,7 @@ The extension parses the document and sends messages to the server. The server:
 
 ## API (local server)
 
-- **POST** `/chat` — body: `{ messages, model?, maxTokens? }` → `{ sessionId }`
+- **POST** `/chat` — body: `{ messages, model?, maxTokens?, temperature?, provider?, reasoningEffort? }` → `{ sessionId }`
 - **GET** `/chunks/{sessionId}` — returns `{ chunks: string[], done: boolean, error: string | null }`
 
 ## Testing
@@ -113,6 +122,6 @@ npm run test:llm-chat
 
 ## Known limitations / future work
 
-- Model selection is basic; only Anthropic supported today.
+- Model selection is basic; Anthropic and OpenAI supported today.
 - No request cancellation; polling-based streaming.
 - Minimal error UI; only inline message insertion.
