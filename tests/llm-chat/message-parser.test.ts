@@ -6,7 +6,7 @@ type RowType = 'row' | 'note'
 
 interface TestRow {
   id: string
-  text: { string: string }
+  text: TestText
   type: RowType
   level: number
   parent?: TestRow
@@ -14,12 +14,14 @@ interface TestRow {
   nextSibling?: TestRow
   nextInOutline?: TestRow
   children: TestRow[]
+  lastLeaf?: TestRow
 }
 
 interface OutlineNode {
   text: string
   type?: RowType
   key?: string
+  link?: string
   children?: OutlineNode[]
 }
 
@@ -29,6 +31,26 @@ interface BuildResult {
 }
 
 let idCounter = 0
+
+interface TestText {
+  string: string
+  attributeAt?: (name: string, index: number) => string | null
+}
+
+function makeText(value: string, link?: string): TestText {
+  if (!link) {
+    return { string: value }
+  }
+
+  return {
+    string: value,
+    attributeAt: (name: string, index: number) => {
+      if (name !== 'a') return null
+      if (index < 0 || index >= value.length) return null
+      return link
+    }
+  }
+}
 
 function buildOutline(nodes: OutlineNode[]): BuildResult {
   const root: TestRow = {
@@ -46,7 +68,7 @@ function buildOutline(nodes: OutlineNode[]): BuildResult {
     for (const item of items) {
       const row: TestRow = {
         id: `row-${++idCounter}`,
-        text: { string: item.text },
+        text: makeText(item.text, item.link),
         type: item.type ?? 'row',
         level: parent.level + 1,
         parent,
@@ -89,6 +111,10 @@ function buildOutline(nodes: OutlineNode[]): BuildResult {
   for (let index = 0; index < preorder.length; index += 1) {
     const current = preorder[index]
     current.nextInOutline = preorder[index + 1]
+  }
+
+  if (preorder.length > 0) {
+    root.lastLeaf = preorder[preorder.length - 1]
   }
 
   return { root, byKey }
@@ -543,4 +569,192 @@ test('cursor inside a note subtree still returns the containing message', () => 
     role: 'user',
     content: 'Before note\nAfter note\n'
   })
+})
+
+function makeInlineResolver(
+  byUrl: Record<string, BuildResult>,
+  byDisplayName: Record<string, BuildResult>
+) {
+  return {
+    resolveByURL: (url: string) => {
+      const match = byUrl[url]
+      return match ? { root: match.root as any, id: url } : null
+    },
+    resolveByDisplayName: (name: string) => {
+      const match = byDisplayName[name]
+      return match ? { root: match.root as any, id: name } : null
+    }
+  }
+}
+
+test('inlines messages from linked outlines in order', () => {
+  const inlineDoc1 = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Doc1 user', key: 'doc1-user' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'Doc1 assistant', key: 'doc1-assistant' }]
+    }
+  ])
+
+  const inlineDoc2 = buildOutline([
+    {
+      text: '<assistant>',
+      children: [{ text: 'Doc2 assistant', key: 'doc2-assistant' }]
+    }
+  ])
+
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Hi', key: 'hi' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'file:///doc1.bike' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'After inline', key: 'after-inline' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'Second Doc' }]
+    },
+    {
+      text: '<user>',
+      children: [{ text: 'Done', key: 'done' }]
+    }
+  ])
+
+  const stopRow = byKey['done']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any, {
+    inlineResolver: makeInlineResolver(
+      { 'file:///doc1.bike': inlineDoc1 },
+      { 'Second Doc': inlineDoc2 }
+    )
+  })
+
+  assert.deepEqual(messages, [
+    { role: 'user', content: 'Hi\n' },
+    { role: 'user', content: 'Doc1 user\n' },
+    { role: 'assistant', content: 'Doc1 assistant\n' },
+    { role: 'assistant', content: 'After inline\n' },
+    { role: 'assistant', content: 'Doc2 assistant\n' },
+    { role: 'user', content: 'Done\n' }
+  ])
+})
+
+test('falls back to visible text when link URL does not resolve', () => {
+  const inlineDoc = buildOutline([
+    {
+      text: '<assistant>',
+      children: [{ text: 'Fallback hit', key: 'fallback' }]
+    }
+  ])
+
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Hi', key: 'hi' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'Doc Three', link: 'file:///missing.bike' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'After inline', key: 'after-inline' }]
+    }
+  ])
+
+  const stopRow = byKey['after-inline']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any, {
+    inlineResolver: makeInlineResolver(
+      {},
+      { 'Doc Three': inlineDoc }
+    )
+  })
+
+  assert.deepEqual(messages, [
+    { role: 'user', content: 'Hi\n' },
+    { role: 'assistant', content: 'Fallback hit\n' },
+    { role: 'assistant', content: 'After inline\n' }
+  ])
+})
+
+test('throws when inline document is not open', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Hi', key: 'hi' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'Missing Doc' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'After inline', key: 'after-inline' }]
+    }
+  ])
+
+  const stopRow = byKey['after-inline']
+  if (!stopRow) throw new Error('Missing test row')
+
+  assert.throws(
+    () =>
+      parseMessages(root as any, stopRow as any, {
+        inlineResolver: makeInlineResolver({}, {})
+      }),
+    {
+      message: 'Unable to find Missing Doc. Inlined documents must be open in Bike.'
+    }
+  )
+})
+
+test('throws on inline cycles', () => {
+  const inlineDoc = buildOutline([
+    {
+      text: '<inline>',
+      children: [{ text: 'file:///doc1.bike' }]
+    }
+  ])
+
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Hi', key: 'hi' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'file:///doc1.bike' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'After inline', key: 'after-inline' }]
+    }
+  ])
+
+  const stopRow = byKey['after-inline']
+  if (!stopRow) throw new Error('Missing test row')
+
+  assert.throws(
+    () =>
+      parseMessages(root as any, stopRow as any, {
+        inlineResolver: makeInlineResolver(
+          { 'file:///doc1.bike': inlineDoc },
+          {}
+        )
+      }),
+    {
+      message: 'Inline cycle detected for file:///doc1.bike.'
+    }
+  )
 })

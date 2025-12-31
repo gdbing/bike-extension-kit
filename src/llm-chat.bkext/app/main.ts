@@ -1,6 +1,6 @@
-import { AppExtensionContext, CommandContext, OutlineEditor } from 'bike/app'
+import { AppExtensionContext, CommandContext, OutlineEditor, Row } from 'bike/app'
 import { getConfig } from './config'
-import { parseMessages } from './message-parser'
+import { InlineResolver, parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { HttpError, streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
@@ -46,7 +46,9 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     updateMarkerAttributes(editor.outline.root)
 
     // Parse messages from document up to cursor
-    const messages = parseMessages(editor.outline.root, selection.row)
+    const messages = parseMessages(editor.outline.root, selection.row, {
+      inlineResolver: createInlineResolver()
+    })
     const settings = parseConversationSettings(editor.outline.root, selection.row)
 
     if (settings.errors.length > 0) {
@@ -151,4 +153,33 @@ export async function activate(context: AppExtensionContext) {
     },
     priority: 100
   })
+}
+
+function createInlineResolver(): InlineResolver {
+  const byUrl = new Map<string, { root: Row; id: string }>()
+  const byDisplayName = new Map<string, { root: Row; id: string }>()
+
+  for (const doc of bike.documents) {
+    const displayName = doc.displayName
+    const fileURL = doc.fileURL?.absoluteString
+
+    const window = doc.windows[0]
+    const editor = window?.currentOutlineEditor
+    if (!window || !editor) continue
+
+    const root = editor.outline.root
+    if (fileURL && !byUrl.has(fileURL)) {
+      byUrl.set(fileURL, { root, id: fileURL })
+    }
+
+    const id = fileURL ?? displayName
+    if (displayName && !byDisplayName.has(displayName)) {
+      byDisplayName.set(displayName, { root, id })
+    }
+  }
+
+  return {
+    resolveByURL: (url: string) => byUrl.get(url) ?? null,
+    resolveByDisplayName: (name: string) => byDisplayName.get(name) ?? null
+  }
 }

@@ -1,6 +1,15 @@
 import type { Row } from 'bike/app'
 import { Message } from './providers/types'
 
+export type InlineResolver = {
+  resolveByURL: (url: string) => { root: Row; id: string } | null
+  resolveByDisplayName: (name: string) => { root: Row; id: string } | null
+}
+
+type ParseOptions = {
+  inlineResolver?: InlineResolver
+}
+
 /**
  * Parse messages from outline rows up to and including the message containing stopRow.
  *
@@ -13,12 +22,23 @@ import { Message } from './providers/types'
  * - Tags are indented <name> rows inside a message; they emit open/close tags and de-indent their contents
  * - The entire message containing stopRow is included, not just content up to stopRow
  */
-export function parseMessages(root: Row, stopRow: Row): Message[] {
+export function parseMessages(root: Row, stopRow: Row, options: ParseOptions = {}): Message[] {
+  return parseMessagesInternal(root, stopRow, options, [])
+}
+
+function parseMessagesInternal(
+  root: Row,
+  stopRow: Row | undefined,
+  options: ParseOptions,
+  inlineStack: string[]
+): Message[] {
   const messages: Message[] = []
   let currentMessage: Message | null = null
   let markerRow: Row | null = null
   let row: Row | undefined = root.firstChild
   const tagStack: { row: Row; name: string; indent: number }[] = []
+
+  if (!stopRow) return messages
 
   // Walk stopRow up to the level-1 marker that contains it so the entire message is included
   let stopMarker: Row = stopRow
@@ -93,6 +113,13 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
           role = 'user'
         } else if (markerName === 'system') {
           role = 'system'
+        } else if (markerName === 'inline') {
+          const inlineMessages = resolveInlineMessages(row, options, inlineStack)
+          messages.push(...inlineMessages)
+          currentMessage = null
+          markerRow = null
+          row = nextRowAfterSubtree(row)
+          continue
         } else if (markerName === 'model' || markerName === 'config') {
           currentMessage = null
           markerRow = null
@@ -149,6 +176,106 @@ export function parseMessages(root: Row, stopRow: Row): Message[] {
   }
 
   return messages
+}
+
+function resolveInlineMessages(
+  markerRow: Row,
+  options: ParseOptions,
+  inlineStack: string[]
+): Message[] {
+  if (!options.inlineResolver) {
+    throw new Error('Inline markers require a resolver to be configured.')
+  }
+
+  const references = collectInlineReferences(markerRow)
+  const messages: Message[] = []
+
+  for (const reference of references) {
+    const resolved = resolveInlineReference(reference, options.inlineResolver)
+    if (!resolved) {
+      const label = reference.text || reference.link || 'inline document'
+      throw new Error(
+        `Unable to find ${label}. Inlined documents must be open in Bike.`
+      )
+    }
+
+    if (inlineStack.includes(resolved.id)) {
+      throw new Error(`Inline cycle detected for ${resolved.id}.`)
+    }
+
+    const stopRow = getLastRow(resolved.root)
+    const nextStack = inlineStack.concat(resolved.id)
+    const inlineMessages = parseMessagesInternal(resolved.root, stopRow, options, nextStack)
+    messages.push(...inlineMessages)
+  }
+
+  return messages
+}
+
+function resolveInlineReference(
+  reference: InlineReference,
+  resolver: InlineResolver
+): { root: Row; id: string } | null {
+  if (reference.link) {
+    const byLink = resolver.resolveByURL(reference.link)
+    if (byLink) return byLink
+  }
+
+  if (!reference.text) return null
+
+  if (reference.text.startsWith('file:///')) {
+    return resolver.resolveByURL(reference.text)
+  }
+
+  return resolver.resolveByDisplayName(reference.text)
+}
+
+type InlineReference = {
+  text?: string
+  link?: string
+}
+
+function collectInlineReferences(markerRow: Row): InlineReference[] {
+  const references: InlineReference[] = []
+  let row = markerRow.nextInOutline
+
+  while (row && isDescendant(row, markerRow)) {
+    if (row.type === 'note') {
+      row = nextRowAfterSubtree(row)
+      continue
+    }
+
+    const text = row.text.string.trim()
+    const link = getFirstLinkURL(row.text)
+    if (text || link) {
+      references.push({ text: text || undefined, link: link || undefined })
+    }
+
+    row = row.nextInOutline
+  }
+
+  return references
+}
+
+function getFirstLinkURL(text: { string: string; attributeAt?: (name: string, index: number) => string | null }): string | null {
+  if (typeof text.attributeAt !== 'function') return null
+  const length = text.string.length
+  for (let index = 0; index < length; index += 1) {
+    const value = text.attributeAt('a', index)
+    if (value) return value
+  }
+  return null
+}
+
+function getLastRow(root: Row): Row | undefined {
+  const lastLeaf = (root as { lastLeaf?: Row }).lastLeaf
+  if (lastLeaf) return lastLeaf
+  let current = root.firstChild
+  if (!current) return undefined
+  while (current.nextInOutline) {
+    current = current.nextInOutline
+  }
+  return current
 }
 
 /**
