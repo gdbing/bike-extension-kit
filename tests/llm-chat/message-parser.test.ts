@@ -308,7 +308,7 @@ test('ignores <model> and <config> markers for message parsing', () => {
   ])
 })
 
-test('ignores indented markers; only level-1 markers start messages', () => {
+test('treats indented <name> rows as tags with closing tags', () => {
   const { root, byKey } = buildOutline([
     {
       text: '<user>',
@@ -316,11 +316,15 @@ test('ignores indented markers; only level-1 markers start messages', () => {
       children: [
         { text: 'Top level', key: 'top' },
         {
-          text: '<assistant>',
-          key: 'nested-marker',
-          children: [{ text: 'Indented content', key: 'nested-line' }]
+          text: '<dogs>',
+          key: 'dogs-tag',
+          children: [
+            { text: 'terrier', key: 'terrier' },
+            { text: 'foxhound', key: 'foxhound' },
+            { text: 'poodle', key: 'poodle' }
+          ]
         },
-        { text: 'After nested marker', key: 'after' }
+        { text: 'After tag', key: 'after' }
       ]
     },
     {
@@ -339,13 +343,141 @@ test('ignores indented markers; only level-1 markers start messages', () => {
   assert.deepEqual(messages, [
     {
       role: 'user',
-      content: 'Top level\n<assistant>\n\tIndented content\nAfter nested marker\n'
+      content: 'Top level\n<dogs>\nterrier\nfoxhound\npoodle\n</dogs>\nAfter tag\n'
     },
     {
       role: 'assistant',
       content: 'Reply\n'
     }
   ])
+})
+
+test('tag content aligns with the tag row indentation', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        {
+          text: 'Animals',
+          key: 'animals',
+          children: [
+            {
+              text: '<dogs>',
+              key: 'dogs-tag',
+              children: [{ text: 'terrier', key: 'terrier' }]
+            }
+          ]
+        }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['terrier']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: 'Animals\n\t<dogs>\n\tterrier\n\t</dogs>\n'
+  })
+})
+
+test('supports nested tags with closing tags in order', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        {
+          text: '<outer>',
+          key: 'outer-tag',
+          children: [
+            { text: 'Before inner', key: 'before' },
+            {
+              text: '<inner>',
+              key: 'inner-tag',
+              children: [{ text: 'Inside', key: 'inside' }]
+            },
+            { text: 'After inner', key: 'after' }
+          ]
+        }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['after']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: '<outer>\nBefore inner\n<inner>\nInside\n</inner>\nAfter inner\n</outer>\n'
+  })
+})
+
+test('skips note subtrees inside tags but keeps tag structure', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        {
+          text: '<section>',
+          key: 'section-tag',
+          children: [
+            { text: 'Intro', key: 'intro' },
+            {
+              text: 'Note block',
+              type: 'note',
+              key: 'note',
+              children: [{ text: 'Hidden', key: 'hidden' }]
+            },
+            { text: 'Outro', key: 'outro' }
+          ]
+        }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['outro']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: '<section>\nIntro\nOutro\n</section>\n'
+  })
+})
+
+test('renders empty tags with opening and closing lines', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        { text: '<empty>', key: 'empty-tag' },
+        { text: 'After', key: 'after' }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['after']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: '<empty>\n</empty>\nAfter\n'
+  })
 })
 
 test('skips note subtrees inside a message but keeps following siblings', () => {

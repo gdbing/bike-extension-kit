@@ -49,7 +49,7 @@ The extension also provides an editor style named "LLM Chat" (Bike > Window > St
    - `<user>` - Your message to the LLM
    - `<system>` - System instructions
    - `<assistant>` - Previous LLM responses (or any `<name>` marker)
-   - Markers **must be root-level rows**; nested markers are treated as plain text
+   - Markers **must be root-level rows**; nested `<name>` rows become tags inside messages
 
 2. Nest your content under the markers (indented)
 
@@ -84,7 +84,7 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 - `<user>` → user role, `<system>` → system role, any other marker → assistant role.
 - Only content nested under a marker is included; note rows and their descendants are skipped.
 - Parsing stops after the marker that contains the cursor row.
-- Nested markers are treated as plain text.
+- Tags are indented `<name>` rows inside a message; they emit open/close tags and de-indent their contents.
 
 ### Outline Config Markers
 
