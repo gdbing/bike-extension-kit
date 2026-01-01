@@ -93,7 +93,7 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 - `<model>`: first non-empty line under the marker is matched (case-insensitive) against the ordered `models` list in `config.json`. The first match wins; unknown models raise errors. The provider is selected automatically from the matched model (or constrained by `<config>` `provider` if set).
 - `<config>`: root-level marker with `key: value` lines (simple scalars). Allowed keys: `model` (exact string), `provider` (from the configured `models` list), `maxTokens` (positive number), `temperature` (0–2), `reasoningEffort` (`none`/`low`/`medium`/`high` for OpenAI). Unknown keys or invalid values raise errors.
 - Multiple markers are merged in document order; later values win. Markers after the cursor row are ignored.
-- Fuzzy model matching: `<model>` also supports in-order token matching (e.g., `sonnet 4.5` matches `claude-sonnet-4-5`).
+- Fuzzy model matching: `<model>` also supports substring matching (e.g., `sonnet` matches `claude-sonnet-4-5`) and in-order token matching (e.g., `sonnet 4.5` matches `claude-sonnet-4-5`).
 
 ## Architecture
 
