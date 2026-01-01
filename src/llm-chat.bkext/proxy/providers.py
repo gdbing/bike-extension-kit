@@ -5,7 +5,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
-Message = Dict[str, str]
+Message = Dict[str, Union[str, List[Dict[str, object]]]]
 
 
 def touch_session(sessions, session_id: str, sessions_lock, update_fn=None) -> None:
@@ -83,6 +83,31 @@ class Provider:
 class AnthropicProvider(Provider):
     name = "anthropic"
 
+    def _apply_prompt_caching(self, conversation: List[Message], max_cached_users: int = 4) -> List[Message]:
+        cached_count = 0
+        updated: List[Message] = []
+
+        for message in reversed(conversation):
+            role = message.get("role")
+            content = (message.get("content") or "").strip()
+
+            if role == "user" and content:
+                if cached_count < max_cached_users:
+                    updated.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": content,
+                            "cache_control": {"type": "ephemeral"}
+                        }]
+                    })
+                    cached_count += 1
+                    continue
+
+            updated.append(message)
+
+        return list(reversed(updated))
+
     def prepare_messages(self, messages: List[Message]) -> Dict[str, Union[str, List[Message]]]:
         # Keep only last system prompt
         system_messages = [m for m in messages if m.get("role") == "system"]
@@ -91,8 +116,9 @@ class AnthropicProvider(Provider):
         # Non-system conversation with Anthropic-specific assistant merging
         conversation = [m for m in messages if m.get("role") != "system"]
         merged_conversation = merge_assistant_runs(conversation)
+        cached_conversation = self._apply_prompt_caching(merged_conversation)
 
-        return {"system": system_prompt, "conversation": merged_conversation}
+        return {"system": system_prompt, "conversation": cached_conversation}
 
     def stream(
         self,
