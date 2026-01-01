@@ -2,7 +2,7 @@ import { Outline, Row } from 'bike/app'
 import { setMarkerAttribute } from './marker-attributes'
 
 /**
- * Find an existing marker row after the given row, or create a new one.
+ * Create a new marker row after the given row.
  */
 function findOrCreateMarkerRow(
   outline: Outline,
@@ -14,8 +14,6 @@ function findOrCreateMarkerRow(
   while (rootLevelRow.level > 1 && rootLevelRow.parent) {
     rootLevelRow = rootLevelRow.parent
   }
-
-  const normalizedMarker = markerText.trim().toLowerCase()
 
   // Always create a new marker row to avoid concurrent streaming collisions.
   const newRows = outline.insertRows(
