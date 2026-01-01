@@ -1,9 +1,10 @@
 import * as assert from 'node:assert/strict'
+import { ModelDefinition } from '../../src/llm-chat.bkext/app/config'
 import { parseConversationSettings } from '../../src/llm-chat.bkext/app/settings-parser'
 import { buildOutline } from './outline-builder'
 import { test } from './test-harness'
 
-const MODEL_DEFINITIONS = [
+const MODEL_DEFINITIONS: ModelDefinition[] = [
   { name: 'claude-haiku-4-5', provider: 'anthropic' },
   { name: 'claude-sonnet-4-5', provider: 'anthropic' },
   { name: 'claude-opus-4-5', provider: 'anthropic' },

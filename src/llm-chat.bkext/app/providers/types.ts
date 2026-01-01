@@ -1,3 +1,5 @@
+import type { ProviderName } from '../config'
+
 export interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -23,7 +25,7 @@ export interface StreamOptions {
   model?: string
   maxTokens?: number
   temperature?: number
-  provider?: string
+  provider?: ProviderName
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   onStatus?: (status: StreamStatus) => void
 }

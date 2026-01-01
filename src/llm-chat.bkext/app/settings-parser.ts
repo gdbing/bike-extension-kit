@@ -1,11 +1,11 @@
 import type { Row } from 'bike/app'
-import { getConfig, ModelDefinition } from './config'
+import { getConfig, ModelDefinition, ProviderName } from './config'
 import { isDescendant, nextRowAfterSubtree } from './outline-walk'
 
 export interface ConversationSettings {
   model?: string
   modelMarker?: string
-  provider?: string
+  provider?: ProviderName
   maxTokens?: number
   temperature?: number
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
@@ -22,7 +22,9 @@ export function parseConversationSettings(
 ): ConversationSettings {
   const resolvedModelDefinitions = modelDefinitions ?? getConfig().models
   const settings: ConversationSettings = { errors: [] }
-  const allowedProviders = new Set(resolvedModelDefinitions.map(model => model.provider))
+  const allowedProviders = new Set<ProviderName>(
+    resolvedModelDefinitions.map(model => model.provider)
+  )
 
   // Walk stopRow up to the level-1 marker that contains it so we stop after that block
   let stopMarker: Row = stopRow
@@ -107,7 +109,7 @@ export function parseConversationSettings(
 
 function parseConfigBlock(
   markerRow: Row,
-  allowedProviders: Set<string>
+  allowedProviders: Set<ProviderName>
 ): {
   values: Partial<Omit<ConversationSettings, 'errors'>>
   errors: string[]
@@ -149,7 +151,7 @@ function applyConfig(
   key: string,
   rawValue: string,
   errors: string[],
-  allowedProviders: Set<string>
+  allowedProviders: Set<ProviderName>
 ): void {
   if (key === 'model') {
     if (!rawValue) {
@@ -161,7 +163,7 @@ function applyConfig(
   }
 
   if (key === 'provider') {
-    const provider = rawValue.toLowerCase()
+    const provider = rawValue.toLowerCase() as ProviderName
     if (!allowedProviders.has(provider)) {
       errors.push(`Unknown provider: ${rawValue}`)
     } else {
@@ -203,9 +205,9 @@ function applyConfig(
 
 function resolveModel(
   input: string,
-  provider: string | undefined,
+  provider: ProviderName | undefined,
   modelDefinitions: ModelDefinition[]
-): { model?: string; provider?: string; error?: string } {
+): { model?: string; provider?: ProviderName; error?: string } {
   const candidate = input.trim().toLowerCase()
   if (!candidate) {
     return { error: 'Empty <model> marker' }

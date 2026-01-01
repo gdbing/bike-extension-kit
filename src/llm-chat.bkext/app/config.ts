@@ -2,8 +2,10 @@ declare function require(path: string): any
 
 export interface ModelDefinition {
   name: string
-  provider: string
+  provider: ProviderName
 }
+
+export type ProviderName = 'anthropic' | 'openai'
 
 export interface ExtensionConfig {
   server: {
