@@ -1,6 +1,7 @@
 import { AppExtensionContext, CommandContext, OutlineEditor, Row } from 'bike/app'
 import { getConfig } from './config'
-import { InlineResolver, parseMessages } from './message-parser'
+import { InlineResolver } from './inline-resolver'
+import { parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { HttpError, streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'

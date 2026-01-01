@@ -1,10 +1,6 @@
 import type { Row } from 'bike/app'
+import { collectInlineReferences, getLastRow, InlineResolver, resolveInlineReference } from './inline-resolver'
 import { Message } from './providers/types'
-
-export type InlineResolver = {
-  resolveByURL: (url: string) => { root: Row; id: string } | null
-  resolveByDisplayName: (name: string) => { root: Row; id: string } | null
-}
 
 type ParseOptions = {
   inlineResolver?: InlineResolver
@@ -220,72 +216,6 @@ function resolveInlineMessages(
   }
 
   return messages
-}
-
-function resolveInlineReference(
-  reference: InlineReference,
-  resolver: InlineResolver
-): { root: Row; id: string } | null {
-  if (reference.link) {
-    const byLink = resolver.resolveByURL(reference.link)
-    if (byLink) return byLink
-  }
-
-  if (!reference.text) return null
-
-  if (reference.text.startsWith('file:///')) {
-    return resolver.resolveByURL(reference.text)
-  }
-
-  return resolver.resolveByDisplayName(reference.text)
-}
-
-type InlineReference = {
-  text?: string
-  link?: string
-}
-
-function collectInlineReferences(markerRow: Row): InlineReference[] {
-  const references: InlineReference[] = []
-  let row = markerRow.nextInOutline
-
-  while (row && isDescendant(row, markerRow)) {
-    if (row.type === 'note') {
-      row = nextRowAfterSubtree(row)
-      continue
-    }
-
-    const text = row.text.string.trim()
-    const link = getFirstLinkURL(row.text)
-    if (text || link) {
-      references.push({ text: text || undefined, link: link || undefined })
-    }
-
-    row = row.nextInOutline
-  }
-
-  return references
-}
-
-function getFirstLinkURL(text: { string: string; attributeAt?: (name: string, index: number) => string | null }): string | null {
-  if (typeof text.attributeAt !== 'function') return null
-  const length = text.string.length
-  for (let index = 0; index < length; index += 1) {
-    const value = text.attributeAt('a', index)
-    if (value) return value
-  }
-  return null
-}
-
-function getLastRow(root: Row): Row | undefined {
-  const lastLeaf = (root as { lastLeaf?: Row }).lastLeaf
-  if (lastLeaf) return lastLeaf
-  let current = root.firstChild
-  if (!current) return undefined
-  while (current.nextInOutline) {
-    current = current.nextInOutline
-  }
-  return current
 }
 
 /**
