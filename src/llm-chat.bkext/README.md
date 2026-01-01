@@ -82,6 +82,7 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 
 - Markers must be root-level rows matching `<name>`.
 - `<user>` → user role, `<system>` → system role, any other marker → assistant role.
+- `<cache>` marks the next message for a 1-hour cache breakpoint (latest `<cache>` wins, Anthropic only).
 - Only content nested under a marker is included; note rows and their descendants are skipped.
 - Parsing stops after the marker that contains the cursor row.
 - Tags are indented `<name>` rows inside a message; they emit open/close tags and de-indent their contents.
@@ -126,3 +127,4 @@ npm run test:llm-chat
 - Model selection is basic; Anthropic and OpenAI supported today.
 - No request cancellation; polling-based streaming.
 - Minimal error UI; only inline message insertion.
+- Prompt caching (Anthropic only): the most recent four user messages get 5-minute cache breakpoints. A `<cache>` marker upgrades the next message and any earlier cached breakpoints (up to the 4-breakpoint limit) to 1-hour TTL.
