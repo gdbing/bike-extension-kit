@@ -188,6 +188,36 @@ class AnthropicProvider(Provider):
                                                 session["chunks"].append(text)
 
                                             touch_session(sessions, session_id, sessions_lock, add_chunk)
+                                if parsed.get("type") == "message_start":
+                                    usage = (parsed.get("message") or {}).get("usage")
+                                    if isinstance(usage, dict):
+                                        set_session_value(
+                                            sessions,
+                                            session_id,
+                                            sessions_lock,
+                                            "usage",
+                                            usage
+                                        )
+                                if parsed.get("type") == "message_delta":
+                                    usage = parsed.get("usage")
+                                    if isinstance(usage, dict):
+                                        set_session_value(
+                                            sessions,
+                                            session_id,
+                                            sessions_lock,
+                                            "usage",
+                                            usage
+                                        )
+                                if parsed.get("type") == "message_stop":
+                                    usage = parsed.get("usage")
+                                    if isinstance(usage, dict):
+                                        set_session_value(
+                                            sessions,
+                                            session_id,
+                                            sessions_lock,
+                                            "usage",
+                                            usage
+                                        )
                             except json.JSONDecodeError:
                                 pass
 

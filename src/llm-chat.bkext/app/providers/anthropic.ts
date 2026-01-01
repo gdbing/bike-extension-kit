@@ -67,6 +67,7 @@ export async function* streamCompletion(
   const temperature = options.temperature
   const provider = options.provider
   const reasoningEffort = options.reasoningEffort
+  const onStatus = options.onStatus
 
   // Start chat session
   const startPayload: Record<string, unknown> = {
@@ -114,10 +115,13 @@ export async function* streamCompletion(
       throw await buildHttpError(pollResponse)
     }
 
-    const { chunks, done, error } = await pollResponse.json()
+    const { chunks, done, error, usage } = await pollResponse.json()
 
     if (error) {
       throw new Error(error)
+    }
+    if (usage && onStatus) {
+      onStatus({ usage })
     }
 
     // Yield all new chunks

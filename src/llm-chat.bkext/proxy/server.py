@@ -256,6 +256,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     "chunks": [],
                     "done": False,
                     "error": None,
+                    "usage": None,
                     "last_access": time.time(),
                     "condition": threading.Condition(sessions_lock)
                 }
@@ -293,6 +294,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 session["chunks"] = []
                 done = session["done"]
                 error = session["error"]
+                usage = session.get("usage")
 
                 # Clean up completed sessions
                 if done:
@@ -301,7 +303,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.send_json({
                 "chunks": chunks,
                 "done": done,
-                "error": error
+                "error": error,
+                "usage": usage
             })
         elif self.path == "/health":
             self.send_json({"status": "ok"})

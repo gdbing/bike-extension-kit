@@ -5,6 +5,7 @@ import { parseConversationSettings } from './settings-parser'
 import { HttpError, streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
 import { updateMarkerAttributes } from './marker-attributes'
+import { registerStatusInspector, resetStatus, updateCacheStatus } from './status-inspector'
 
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
@@ -39,6 +40,11 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
   }
 
   console.log(`LLM Chat [${INSTANCE_ID}]: Starting request`)
+
+  const statusWindow = bike.frontmostWindow
+  const requestStartedAt = Date.now()
+
+  resetStatus(statusWindow)
 
   try {
     const config = getConfig()
@@ -78,7 +84,20 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
       provider: settings.provider,
-      reasoningEffort: settings.reasoningEffort
+      reasoningEffort: settings.reasoningEffort,
+      onStatus: (status) => {
+        const usage = status.usage ?? {}
+        const cacheReadTokens = Number(usage.cache_read_input_tokens ?? 0)
+        const cacheWriteTokens = Number(usage.cache_creation_input_tokens ?? 0)
+        if (cacheReadTokens > 0 || cacheWriteTokens > 0) {
+          updateCacheStatus(statusWindow, {
+            cacheReadTokens,
+            cacheWriteTokens,
+            ttlSeconds: 300,
+            startedAt: requestStartedAt
+          })
+        }
+      }
     })
 
     // Stream response into outline
@@ -129,6 +148,10 @@ export async function activate(context: AppExtensionContext) {
   context['llm-chat-outline-observer'] = {
     dispose: () => outlineObserver?.dispose()
   }
+
+  bike.observeWindows(async (window) => {
+    await registerStatusInspector(window)
+  })
 
   // Register command
   bike.commands.addCommands({
