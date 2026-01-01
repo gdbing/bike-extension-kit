@@ -114,7 +114,7 @@ The extension parses the document and sends messages to the server. The server:
 ## API (local server)
 
 - **POST** `/chat` — body: `{ messages, model?, maxTokens?, temperature?, provider?, reasoningEffort? }` → `{ sessionId }`
-- **GET** `/chunks/{sessionId}` — returns `{ chunks: string[], done: boolean, error: string | null }`
+- **GET** `/chunks/{sessionId}` — returns `{ chunks: string[], done: boolean, error: string | null, usage?: { cache_read_input_tokens?: number, cache_creation_input_tokens?: number, input_tokens?: number, output_tokens?: number, ... } }`
 
 ## Testing
 
