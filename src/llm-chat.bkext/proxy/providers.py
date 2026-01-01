@@ -5,7 +5,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
-Message = Dict[str, Union[str, List[Dict[str, object]]]]
+Message = Dict[str, Union[str, List[Dict[str, object]], Dict[str, object]]]
 
 
 def touch_session(sessions, session_id: str, sessions_lock, update_fn=None) -> None:
@@ -32,13 +32,23 @@ def merge_assistant_runs(conversation: List[Message]) -> List[Message]:
     for message in conversation:
         role = message.get("role", "").strip()
         content = (message.get("content") or "").strip()
+        cache_control = message.get("cacheControl")
         if not content:
             continue
 
-        if merged and role == "assistant" and merged[-1].get("role") == "assistant":
+        if (
+            merged
+            and role == "assistant"
+            and merged[-1].get("role") == "assistant"
+            and not cache_control
+            and not merged[-1].get("cacheControl")
+        ):
             merged[-1]["content"] = (merged[-1]["content"].rstrip("\n") + "\n" + content)
         else:
-            merged.append({"role": role, "content": content})
+            entry: Message = {"role": role, "content": content}
+            if cache_control:
+                entry["cacheControl"] = cache_control
+            merged.append(entry)
     return merged
 
 
@@ -84,29 +94,81 @@ class AnthropicProvider(Provider):
     name = "anthropic"
 
     def _apply_prompt_caching(self, conversation: List[Message], max_cached_users: int = 4) -> List[Message]:
-        cached_count = 0
-        updated: List[Message] = []
+        last_one_hour_index: Optional[int] = None
+        for index, message in enumerate(conversation):
+            cache_control = message.get("cacheControl")
+            if (
+                isinstance(cache_control, dict)
+                and cache_control.get("type") == "ephemeral"
+                and cache_control.get("ttl") == "1h"
+            ):
+                last_one_hour_index = index
 
-        for message in reversed(conversation):
+        recent_user_indices: List[int] = []
+        for index, message in enumerate(conversation):
+            if message.get("role") == "user" and (message.get("content") or "").strip():
+                recent_user_indices.append(index)
+        recent_user_indices = recent_user_indices[-max_cached_users:]
+
+        candidates: List[Dict[str, Union[int, str, bool]]] = []
+        seen_indices = set()
+
+        if last_one_hour_index is not None:
+            candidates.append({"index": last_one_hour_index, "ttl": "1h", "explicit": True})
+            seen_indices.add(last_one_hour_index)
+
+        for index in recent_user_indices:
+            if index in seen_indices:
+                continue
+            ttl = "5m"
+            if last_one_hour_index is not None and index <= last_one_hour_index:
+                ttl = "1h"
+            candidates.append({"index": index, "ttl": ttl, "explicit": False})
+            seen_indices.add(index)
+
+        candidates.sort(key=lambda item: item["index"])  # type: ignore[arg-type]
+
+        while len(candidates) > 4:
+            drop_index = None
+            for idx, candidate in enumerate(candidates):
+                if not candidate.get("explicit"):
+                    drop_index = idx
+                    break
+            if drop_index is None:
+                drop_index = 0
+            candidates.pop(drop_index)
+
+        remaining_one_hour = [c for c in candidates if c.get("ttl") == "1h"]
+        if remaining_one_hour:
+            last_one_hour_index = max(c["index"] for c in remaining_one_hour)  # type: ignore[misc]
+            for candidate in candidates:
+                if candidate["index"] <= last_one_hour_index:
+                    candidate["ttl"] = "1h"
+
+        cache_plan: Dict[int, str] = {c["index"]: str(c["ttl"]) for c in candidates}  # type: ignore[misc]
+
+        updated: List[Message] = []
+        for index, message in enumerate(conversation):
             role = message.get("role")
             content = (message.get("content") or "").strip()
-
-            if role == "user" and content:
-                if cached_count < max_cached_users:
-                    updated.append({
-                        "role": "user",
-                        "content": [{
-                            "type": "text",
-                            "text": content,
-                            "cache_control": {"type": "ephemeral"}
-                        }]
-                    })
-                    cached_count += 1
-                    continue
+            ttl = cache_plan.get(index)
+            if content and ttl:
+                control = {"type": "ephemeral"}
+                if ttl == "1h":
+                    control["ttl"] = "1h"
+                updated.append({
+                    "role": role,
+                    "content": [{
+                        "type": "text",
+                        "text": content,
+                        "cache_control": control
+                    }]
+                })
+                continue
 
             updated.append(message)
 
-        return list(reversed(updated))
+        return updated
 
     def prepare_messages(self, messages: List[Message]) -> Dict[str, Union[str, List[Message]]]:
         # Keep only last system prompt

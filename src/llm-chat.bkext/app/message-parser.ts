@@ -37,6 +37,7 @@ function parseMessagesInternal(
   let markerRow: Row | null = null
   let row: Row | undefined = root.firstChild
   const tagStack: { row: Row; name: string; indent: number }[] = []
+  let pendingCacheTtl: '1h' | null = null
 
   if (!stopRow) return messages
 
@@ -120,6 +121,12 @@ function parseMessagesInternal(
           markerRow = null
           row = nextRowAfterSubtree(row)
           continue
+        } else if (markerName === 'cache') {
+          pendingCacheTtl = '1h'
+          currentMessage = null
+          markerRow = null
+          row = nextRowAfterSubtree(row)
+          continue
         } else if (markerName === 'model' || markerName === 'config') {
           currentMessage = null
           markerRow = null
@@ -129,7 +136,10 @@ function parseMessagesInternal(
           role = 'assistant'
         }
 
-        currentMessage = { role, content: '' }
+        currentMessage = pendingCacheTtl
+          ? { role, content: '', cacheControl: { type: 'ephemeral', ttl: pendingCacheTtl } }
+          : { role, content: '' }
+        pendingCacheTtl = null
         markerRow = row
 
         row = row.nextInOutline

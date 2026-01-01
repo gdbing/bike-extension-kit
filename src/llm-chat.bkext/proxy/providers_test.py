@@ -1,6 +1,6 @@
 import unittest
 
-from providers import OpenAIProvider, merge_same_role_runs
+from providers import AnthropicProvider, OpenAIProvider, merge_same_role_runs
 
 
 class MergeSameRoleRunsTests(unittest.TestCase):
@@ -80,6 +80,103 @@ class OpenAIProviderTests(unittest.TestCase):
                 {"role": "assistant", "content": "Hi\nMore"},
             ],
         )
+
+
+class AnthropicProviderCachingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.provider = AnthropicProvider()
+
+    def test_promotes_earlier_user_breakpoints_to_one_hour(self) -> None:
+        conversation = [
+            {"role": "user", "content": "u1"},
+            {"role": "user", "content": "u2"},
+            {"role": "user", "content": "u3", "cacheControl": {"type": "ephemeral", "ttl": "1h"}},
+            {"role": "user", "content": "u4"},
+            {"role": "user", "content": "u5"},
+        ]
+
+        cached = self.provider._apply_prompt_caching(conversation)
+
+        def ttl_for(index: int) -> str:
+            content = cached[index]["content"]
+            if isinstance(content, list):
+                return content[0]["cache_control"].get("ttl") or "5m"
+            return "none"
+
+        self.assertEqual(ttl_for(1), "1h")
+        self.assertEqual(ttl_for(2), "1h")
+        self.assertEqual(ttl_for(3), "5m")
+        self.assertEqual(ttl_for(4), "5m")
+
+    def test_limits_breakpoints_to_four(self) -> None:
+        conversation = [
+            {"role": "user", "content": "u1"},
+            {"role": "user", "content": "u2"},
+            {"role": "assistant", "content": "a1", "cacheControl": {"type": "ephemeral", "ttl": "1h"}},
+            {"role": "user", "content": "u3"},
+            {"role": "user", "content": "u4"},
+            {"role": "user", "content": "u5"},
+        ]
+
+        cached = self.provider._apply_prompt_caching(conversation)
+
+        breakpoints = 0
+        for message in cached:
+            content = message["content"]
+            if isinstance(content, list):
+                breakpoints += 1
+
+        self.assertEqual(breakpoints, 4)
+
+    def test_cache_marker_on_first_message(self) -> None:
+        conversation = [
+            {"role": "user", "content": "u1", "cacheControl": {"type": "ephemeral", "ttl": "1h"}},
+            {"role": "user", "content": "u2"},
+            {"role": "user", "content": "u3"},
+            {"role": "user", "content": "u4"},
+            {"role": "user", "content": "u5"},
+        ]
+
+        cached = self.provider._apply_prompt_caching(conversation)
+
+        self.assertIsInstance(cached[0]["content"], list)
+        self.assertIsInstance(cached[1]["content"], str)
+        self.assertIsInstance(cached[2]["content"], list)
+        self.assertIsInstance(cached[3]["content"], list)
+        self.assertIsInstance(cached[4]["content"], list)
+
+    def test_default_recent_user_breakpoints(self) -> None:
+        conversation = [
+            {"role": "user", "content": "u1"},
+            {"role": "user", "content": "u2"},
+            {"role": "user", "content": "u3"},
+            {"role": "user", "content": "u4"},
+            {"role": "user", "content": "u5"},
+        ]
+
+        cached = self.provider._apply_prompt_caching(conversation)
+
+        self.assertIsInstance(cached[0]["content"], str)
+        self.assertIsInstance(cached[1]["content"], list)
+        self.assertIsInstance(cached[2]["content"], list)
+        self.assertIsInstance(cached[3]["content"], list)
+        self.assertIsInstance(cached[4]["content"], list)
+
+    def test_only_latest_one_hour_marker_applies(self) -> None:
+        conversation = [
+            {"role": "user", "content": "u1"},
+            {"role": "user", "content": "u2", "cacheControl": {"type": "ephemeral", "ttl": "1h"}},
+            {"role": "user", "content": "u3"},
+            {"role": "user", "content": "u4"},
+            {"role": "user", "content": "u5"},
+            {"role": "user", "content": "u6", "cacheControl": {"type": "ephemeral", "ttl": "1h"}},
+        ]
+
+        cached = self.provider._apply_prompt_caching(conversation)
+
+        self.assertIsInstance(cached[1]["content"], str)
+        self.assertIsInstance(cached[2]["content"], list)
+        self.assertIsInstance(cached[3]["content"], list)
 
 
 if __name__ == "__main__":

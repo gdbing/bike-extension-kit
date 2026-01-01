@@ -220,6 +220,113 @@ test('ignores root rows that are not markers', () => {
   ])
 })
 
+test('applies <cache> marker to the next user message', () => {
+  const { root, byKey } = buildOutline([
+    { text: '<cache>', key: 'cache' },
+    {
+      text: '<user>',
+      key: 'user',
+      children: [{ text: 'Cache this', key: 'user-line' }]
+    }
+  ])
+
+  const stopRow = byKey['user-line']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: 'Cache this\n',
+    cacheControl: { type: 'ephemeral', ttl: '1h' }
+  })
+})
+
+test('cache marker does not apply to later messages', () => {
+  const { root, byKey } = buildOutline([
+    { text: '<cache>', key: 'cache' },
+    {
+      text: '<user>',
+      key: 'user-one',
+      children: [{ text: 'First message', key: 'user-one-line' }]
+    },
+    {
+      text: '<user>',
+      key: 'user-two',
+      children: [{ text: 'Second message', key: 'user-two-line' }]
+    }
+  ])
+
+  const stopRow = byKey['user-two-line']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 2)
+  assert.deepEqual(messages, [
+    {
+      role: 'user',
+      content: 'First message\n',
+      cacheControl: { type: 'ephemeral', ttl: '1h' }
+    },
+    {
+      role: 'user',
+      content: 'Second message\n'
+    }
+  ])
+})
+
+test('applies <cache> marker to the next assistant message', () => {
+  const { root, byKey } = buildOutline([
+    { text: '<cache>', key: 'cache' },
+    {
+      text: '<assistant>',
+      key: 'assistant',
+      children: [{ text: 'Cached response', key: 'assistant-line' }]
+    }
+  ])
+
+  const stopRow = byKey['assistant-line']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'assistant',
+    content: 'Cached response\n',
+    cacheControl: { type: 'ephemeral', ttl: '1h' }
+  })
+})
+
+test('cache marker is consumed by an empty user message', () => {
+  const { root, byKey } = buildOutline([
+    { text: '<cache>', key: 'cache' },
+    {
+      text: '<user>',
+      key: 'empty-user',
+      children: [{ text: '   ', key: 'empty-line' }]
+    },
+    {
+      text: '<user>',
+      key: 'next-user',
+      children: [{ text: 'Hello', key: 'next-line' }]
+    }
+  ])
+
+  const stopRow = byKey['next-line']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: 'Hello\n'
+  })
+})
+
 test('stops after the level-1 ancestor containing the cursor row', () => {
   const { root, byKey } = buildOutline([
     {

@@ -202,10 +202,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 content = (msg.get("content") or "") if isinstance(msg, dict) else ""
                 if not content.strip():
                     continue
-                messages.append({
+                message = {
                     "role": msg.get("role", "assistant"),
                     "content": content
-                })
+                }
+                cache_control = msg.get("cacheControl") if isinstance(msg, dict) else None
+                if isinstance(cache_control, dict):
+                    message["cacheControl"] = cache_control
+                messages.append(message)
 
             if not messages:
                 self.send_json({"error": "No non-empty messages provided."}, 400)

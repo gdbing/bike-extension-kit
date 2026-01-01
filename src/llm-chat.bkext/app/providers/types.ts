@@ -1,6 +1,10 @@
 export interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
+  cacheControl?: {
+    type: 'ephemeral'
+    ttl?: '1h'
+  }
 }
 
 export interface CacheUsage {
