@@ -1,4 +1,5 @@
 import type { Row } from 'bike/app'
+import { isDescendant, nextRowAfterSubtree } from './outline-walk'
 
 export type InlineResolver = {
   resolveByURL: (url: string) => { root: Row; id: string } | null
@@ -69,27 +70,4 @@ function getFirstLinkURL(text: { string: string; attributeAt?: (name: string, in
     if (value) return value
   }
   return null
-}
-
-function isDescendant(row: Row, ancestor: Row): boolean {
-  const ancestorId = ancestor.id
-  let parent = row.parent
-  while (parent) {
-    if (parent.id === ancestorId) {
-      return true
-    }
-    parent = parent.parent
-  }
-  return false
-}
-
-function nextRowAfterSubtree(row: Row): Row | undefined {
-  let current: Row | undefined = row
-  while (current) {
-    if (current.nextSibling) {
-      return current.nextSibling
-    }
-    current = current.parent
-  }
-  return undefined
 }

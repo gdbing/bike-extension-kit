@@ -1,6 +1,7 @@
 import type { Row } from 'bike/app'
 import { collectInlineReferences, getLastRow, InlineResolver, resolveInlineReference } from './inline-resolver'
 import { Message } from './providers/types'
+import { isDescendant, nextRowAfterSubtree } from './outline-walk'
 
 type ParseOptions = {
   inlineResolver?: InlineResolver
@@ -224,36 +225,4 @@ function resolveInlineMessages(
  */
 function isSameRow(a: Row, b: Row): boolean {
   return a.id === b.id
-}
-
-/**
- * Check if a row is a descendant of another row.
- * Compare by ID since Row objects may be different wrapper instances.
- */
-function isDescendant(row: Row, ancestor: Row): boolean {
-  const ancestorId = ancestor.id
-  let parent = row.parent
-  while (parent) {
-    if (parent.id === ancestorId) {
-      return true
-    }
-    parent = parent.parent
-  }
-  return false
-}
-
-/**
- * Find the next row after a subtree (skipping all descendants).
- * If the row has a next sibling, return it.
- * Otherwise, walk up and find an ancestor's next sibling.
- */
-function nextRowAfterSubtree(row: Row): Row | undefined {
-  let current: Row | undefined = row
-  while (current) {
-    if (current.nextSibling) {
-      return current.nextSibling
-    }
-    current = current.parent
-  }
-  return undefined
 }

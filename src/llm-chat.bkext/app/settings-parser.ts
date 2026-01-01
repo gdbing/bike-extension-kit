@@ -1,5 +1,6 @@
 import type { Row } from 'bike/app'
 import { getConfig, ModelDefinition } from './config'
+import { isDescendant, nextRowAfterSubtree } from './outline-walk'
 
 export interface ConversationSettings {
   model?: string
@@ -277,27 +278,4 @@ function stripQuotes(value: string): string {
 
 function isSameRow(a: Row, b: Row): boolean {
   return a.id === b.id
-}
-
-function isDescendant(row: Row, ancestor: Row): boolean {
-  const ancestorId = ancestor.id
-  let parent = row.parent
-  while (parent) {
-    if (parent.id === ancestorId) {
-      return true
-    }
-    parent = parent.parent
-  }
-  return false
-}
-
-function nextRowAfterSubtree(row: Row): Row | undefined {
-  let current: Row | undefined = row
-  while (current) {
-    if (current.nextSibling) {
-      return current.nextSibling
-    }
-    current = current.parent
-  }
-  return undefined
 }
