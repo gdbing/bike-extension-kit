@@ -1,32 +1,7 @@
 import * as assert from 'node:assert/strict'
 import { parseConversationSettings } from '../../src/llm-chat.bkext/app/settings-parser'
+import { buildOutline } from './outline-builder'
 import { test } from './test-harness'
-
-type RowType = 'row' | 'note'
-
-interface TestRow {
-  id: string
-  text: { string: string }
-  type: RowType
-  level: number
-  parent?: TestRow
-  firstChild?: TestRow
-  nextSibling?: TestRow
-  nextInOutline?: TestRow
-  children: TestRow[]
-}
-
-interface OutlineNode {
-  text: string
-  type?: RowType
-  key?: string
-  children?: OutlineNode[]
-}
-
-interface BuildResult {
-  root: TestRow
-  byKey: Record<string, TestRow>
-}
 
 const MODEL_DEFINITIONS = [
   { name: 'claude-haiku-4-5', provider: 'anthropic' },
@@ -36,58 +11,6 @@ const MODEL_DEFINITIONS = [
   { name: 'gpt-5-mini', provider: 'openai' }
 ]
 
-let idCounter = 0
-
-function buildOutline(nodes: OutlineNode[]): BuildResult {
-  const root: TestRow = {
-    id: 'root',
-    text: { string: '' },
-    type: 'row',
-    level: 0,
-    children: []
-  }
-
-  const byKey: Record<string, TestRow> = {}
-
-  const createChildren = (items: OutlineNode[], parent: TestRow) => {
-    let previous: TestRow | undefined
-    for (const item of items) {
-      const row: TestRow = {
-        id: `row-${++idCounter}`,
-        text: { string: item.text },
-        type: item.type ?? 'row',
-        level: parent.level + 1,
-        parent,
-        children: []
-      }
-
-      if (!parent.firstChild) parent.firstChild = row
-      parent.children.push(row)
-      if (previous) previous.nextSibling = row
-      if (item.key) byKey[item.key] = row
-      if (item.children?.length) createChildren(item.children, row)
-      previous = row
-    }
-  }
-
-  createChildren(nodes, root)
-
-  const preorder: TestRow[] = []
-  const visit = (row?: TestRow) => {
-    if (!row) return
-    preorder.push(row)
-    visit(row.firstChild)
-    visit(row.nextSibling)
-  }
-  visit(root.firstChild)
-
-  for (let index = 0; index < preorder.length; index += 1) {
-    const current = preorder[index]
-    current.nextInOutline = preorder[index + 1]
-  }
-
-  return { root, byKey }
-}
 
 test('resolves <model> against configured models and sets provider', () => {
   const { root, byKey } = buildOutline([
