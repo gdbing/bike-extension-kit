@@ -1,4 +1,5 @@
 import type { Document, Outline, Row, Disposable } from 'bike/app'
+const INLINE_ID_ATTR = 'data-inline-id'
 
 type DocInfo = {
   document: Document
@@ -25,6 +26,7 @@ type InlineInfo = {
   inlineSig: string
   prevInlineSig?: string
   inlineChanged: boolean
+  needsInlineIds: boolean
 }
 
 export class InlineDocumentSync {
@@ -107,12 +109,15 @@ export class InlineDocumentSync {
 
       const initialDocSignatures = new Map<Document, string>()
       for (const info of docInfos) {
-        initialDocSignatures.set(info.document, serializeRows(info.outline.root.children))
+        initialDocSignatures.set(
+          info.document,
+          serializeRows(info.outline.root.children, { ignoreInlineId: true })
+        )
       }
 
       const initialInlineSignatures = new Map<Document, Map<string, string>>()
       for (const link of links) {
-        const inlineSig = serializeRows(link.heading.children)
+        const inlineSig = serializeRows(link.heading.children, { ignoreInlineId: true })
         let inlineMap = initialInlineSignatures.get(link.hostDoc)
         if (!inlineMap) {
           inlineMap = new Map()
@@ -129,11 +134,12 @@ export class InlineDocumentSync {
         const docChanged = prevDocSig !== undefined && docSig !== prevDocSig
 
         const inlineInfos: InlineInfo[] = linkGroup.map((link) => {
-        const inlineSig = initialInlineSignatures.get(link.hostDoc)?.get(link.heading.id) ?? ''
-        const prevInlineSig = prevInlineSignatures.get(link.hostDoc)?.get(link.heading.id)
-        const inlineChanged = prevInlineSig !== undefined && inlineSig !== prevInlineSig
-        return { link, inlineSig, prevInlineSig, inlineChanged }
-      })
+          const inlineSig = initialInlineSignatures.get(link.hostDoc)?.get(link.heading.id) ?? ''
+          const prevInlineSig = prevInlineSignatures.get(link.hostDoc)?.get(link.heading.id)
+          const inlineChanged = prevInlineSig !== undefined && inlineSig !== prevInlineSig
+          const needsInlineIds = hasMissingInlineIds(link.heading)
+          return { link, inlineSig, prevInlineSig, inlineChanged, needsInlineIds }
+        })
         const inlineChangedInfos = inlineInfos.filter((info) => info.inlineChanged)
 
         let source: 'doc' | 'inline' | null = null
@@ -154,32 +160,40 @@ export class InlineDocumentSync {
         } else if (inlineChangedInfos.length > 0) {
           source = 'inline'
           inlineSource = pickInlineSource(inlineChangedInfos, this.lastChangedDocument)
-        } else if (inlineInfos.some((info) => info.inlineSig !== docSig)) {
+        } else if (inlineInfos.some((info) => info.inlineSig !== docSig || info.needsInlineIds)) {
           source = 'doc'
         }
 
         if (source === 'inline' && inlineSource) {
-          docSig = inlineSource.inlineSig
           const targetOutline = inlineSource.link.targetDoc.outline
-          this.replaceChildren(targetOutline.root, inlineSource.link.heading.children, inlineSource.link.targetDoc.displayName)
+          this.syncDocFromInline(
+            targetOutline.root,
+            inlineSource.link.heading.children,
+            inlineSource.link.targetDoc.displayName,
+            inlineSource.link.hostOutline
+          )
+          docSig = serializeRows(targetOutline.root.children, { ignoreInlineId: true })
         }
 
         const docRows = linkGroup[0].targetDoc.outline.root.children
         for (const info of inlineInfos) {
           if (info.inlineSig !== docSig) {
-            this.replaceChildren(info.link.heading, docRows, info.link.targetDoc.displayName)
+            this.syncInlineFromDoc(info.link.heading, docRows, info.link.targetDoc.displayName)
           }
         }
       }
 
       const finalDocSignatures = new Map<Document, string>()
       for (const info of docInfos) {
-        finalDocSignatures.set(info.document, serializeRows(info.outline.root.children))
+        finalDocSignatures.set(
+          info.document,
+          serializeRows(info.outline.root.children, { ignoreInlineId: true })
+        )
       }
 
       const finalInlineSignatures = new Map<Document, Map<string, string>>()
       for (const link of links) {
-        const inlineSig = serializeRows(link.heading.children)
+        const inlineSig = serializeRows(link.heading.children, { ignoreInlineId: true })
         let inlineMap = finalInlineSignatures.get(link.hostDoc)
         if (!inlineMap) {
           inlineMap = new Map()
@@ -211,22 +225,43 @@ export class InlineDocumentSync {
     }
   }
 
-  private replaceChildren(parent: Row, sourceRows: Row[], label: string): void {
+  private syncInlineFromDoc(parent: Row, sourceRows: Row[], label: string): void {
+    const outline = parent.outline
+    const context: DocToInlineContext = {
+      inlineMap: mapInlineRowsById(parent),
+      matched: new Set<Row>(),
+      desiredChildren: new Map<Row, Row[]>()
+    }
     this.withApplying(() => {
-      const outline = parent.outline
-      const stableSourceRows = filterSyncRows(sourceRows)
       outline.transaction({ label: `Inline ${label}` }, () => {
-        const existing = parent.children.slice()
-        const removable = existing.filter((row) => !isPlaceholderRow(row))
-        let insertedRoots: Row[] = []
-        if (stableSourceRows.length > 0) {
-          const before = removable[0]
-          insertedRoots = copyRowSubtree(outline, parent, stableSourceRows, before)
-        }
-        if (removable.length > 0) {
-          outline.removeRows(removable)
-        }
+        syncDocToInlineRows(sourceRows, parent, context)
+        applyOrdering(outline, context.desiredChildren)
+        removeExtraChildren(outline, context.desiredChildren)
       })
+    })
+  }
+
+  private syncDocFromInline(parent: Row, sourceRows: Row[], label: string, inlineOutline: Outline): void {
+    const outline = parent.outline
+    const context: InlineToDocContext = {
+      matched: new Set<Row>(),
+      desiredChildren: new Map<Row, Row[]>(),
+      inlineUpdates: new Map<Row, string>(),
+      docMap: mapRowsById(parent)
+    }
+    this.withApplying(() => {
+      outline.transaction({ label: `Inline ${label}` }, () => {
+        syncInlineToDocRows(sourceRows, parent, context)
+        applyOrdering(outline, context.desiredChildren)
+        removeExtraChildren(outline, context.desiredChildren)
+      })
+      if (context.inlineUpdates.size > 0) {
+        inlineOutline.transaction({ label: `Inline ${label}` }, () => {
+          for (const [row, id] of context.inlineUpdates) {
+            setInlineId(row, id)
+          }
+        })
+      }
     })
   }
 
@@ -301,6 +336,20 @@ export class InlineDocumentSync {
   }
 }
 
+type DocToInlineContext = {
+  inlineMap: Map<string, Row>
+  matched: Set<Row>
+  desiredChildren: Map<Row, Row[]>
+}
+
+type InlineToDocContext = {
+  matched: Set<Row>
+  desiredChildren: Map<Row, Row[]>
+  inlineUpdates: Map<Row, string>
+  docMap: Map<string, Row>
+}
+
+
 function indexDocumentsByName(docInfos: DocInfo[]): Map<string, DocInfo> {
   const map = new Map<string, DocInfo>()
   for (const info of docInfos) {
@@ -359,8 +408,12 @@ function pickInlineSource(inlineChanged: InlineInfo[], lastChangedDocument?: Doc
   return inlineChanged[0]
 }
 
-function serializeRows(rows: Row[]): string {
-  const snapshots = filterSyncRows(rows).map((row) => serializeRow(row))
+type SerializeOptions = {
+  ignoreInlineId?: boolean
+}
+
+function serializeRows(rows: Row[], options: SerializeOptions = {}): string {
+  const snapshots = rows.map((row) => serializeRow(row, options))
   return JSON.stringify(snapshots)
 }
 
@@ -371,17 +424,22 @@ type RowSnapshot = {
   children: RowSnapshot[]
 }
 
-function serializeRow(row: Row): RowSnapshot {
+function serializeRow(row: Row, options: SerializeOptions): RowSnapshot {
   return {
     type: row.type,
     text: serializeText(row),
-    attributes: serializeAttributes(row.attributes),
-    children: row.children.map((child) => serializeRow(child))
+    attributes: serializeAttributes(row.attributes, options),
+    children: row.children.map((child) => serializeRow(child, options))
   }
 }
 
-function serializeAttributes(attributes: Record<string, string>): [string, string][] {
-  const keys = Object.keys(attributes).sort()
+function serializeAttributes(
+  attributes: Record<string, string>,
+  options: SerializeOptions
+): [string, string][] {
+  const keys = Object.keys(attributes)
+    .filter((key) => !(options.ignoreInlineId && key === INLINE_ID_ATTR))
+    .sort()
   return keys.map((key) => [key, attributes[key]])
 }
 
@@ -398,39 +456,234 @@ function getInlineTargetName(row: Row): string | null {
   return name ? name : null
 }
 
-function isPlaceholderRow(row: Row): boolean {
-  return (
-    row.type === 'body' &&
-    row.text.string === '' &&
-    row.children.length === 0 &&
-    Object.keys(row.attributes).length === 0
-  )
+function getInlineId(row: Row): string | undefined {
+  const value = row.attributes[INLINE_ID_ATTR]
+  return value && value.length > 0 ? value : undefined
 }
 
-function filterSyncRows(rows: Row[]): Row[] {
-  return rows.filter((row) => !isPlaceholderRow(row))
-}
-
-function copyRowSubtree(outline: Outline, parent: Row, sourceRows: Row[], before?: Row): Row[] {
-  const insertedRoots: Row[] = []
-  for (const sourceRow of sourceRows) {
-    const [inserted] = outline.insertRows(
-      [
-        {
-          type: sourceRow.type,
-          text: sourceRow.text,
-          attributes: { ...sourceRow.attributes }
-        }
-      ],
-      parent,
-      before
-    )
-    insertedRoots.push(inserted)
-    if (sourceRow.children.length > 0) {
-      copyRowSubtree(outline, inserted, sourceRow.children)
+function hasMissingInlineIds(parent: Row): boolean {
+  for (const row of collectSubtreeRows(parent)) {
+    if (!getInlineId(row)) {
+      return true
     }
   }
-  return insertedRoots
+  return false
+}
+
+function setInlineId(row: Row, id: string): void {
+  const value = String(id)
+  if (row.attributes[INLINE_ID_ATTR] !== value) {
+    row.setAttribute(INLINE_ID_ATTR, value)
+  }
+}
+
+function queueInlineIdUpdate(updates: Map<Row, string>, row: Row, id: string): void {
+  const value = String(id)
+  if (row.attributes[INLINE_ID_ATTR] !== value) {
+    updates.set(row, value)
+  }
+}
+
+function mapInlineRowsById(root: Row): Map<string, Row> {
+  const map = new Map<string, Row>()
+  for (const row of collectSubtreeRows(root)) {
+    const inlineId = getInlineId(row)
+    if (inlineId && !map.has(inlineId)) {
+      map.set(inlineId, row)
+    }
+  }
+  return map
+}
+
+function mapRowsById(root: Row): Map<string, Row> {
+  const map = new Map<string, Row>()
+  for (const row of collectSubtreeRows(root)) {
+    const id = String(row.id)
+    if (!map.has(id)) {
+      map.set(id, row)
+    }
+  }
+  return map
+}
+
+function syncDocToInlineRows(sourceRows: Row[], targetParent: Row, context: DocToInlineContext): void {
+  const outline = targetParent.outline
+  const desired: Row[] = []
+
+  for (const sourceRow of sourceRows) {
+    let targetRow = context.inlineMap.get(sourceRow.id)
+    if (targetRow && (context.matched.has(targetRow) || isAncestorOf(targetRow, targetParent))) {
+      targetRow = undefined
+    }
+    if (!targetRow) {
+      const [inserted] = outline.insertRows([createRowSourceFromDoc(sourceRow)], targetParent)
+      targetRow = inserted
+      context.inlineMap.set(String(sourceRow.id), targetRow)
+    }
+    context.matched.add(targetRow)
+    syncRowContentFromDoc(sourceRow, targetRow)
+    syncDocToInlineRows(sourceRow.children, targetRow, context)
+    desired.push(targetRow)
+  }
+
+  context.desiredChildren.set(targetParent, desired)
+}
+
+function syncInlineToDocRows(sourceRows: Row[], targetParent: Row, context: InlineToDocContext): void {
+  const outline = targetParent.outline
+  const desired: Row[] = []
+
+  for (const sourceRow of sourceRows) {
+    const inlineId = getInlineId(sourceRow)
+    let targetRow = inlineId ? context.docMap.get(inlineId) : undefined
+    if (targetRow && (context.matched.has(targetRow) || isAncestorOf(targetRow, targetParent))) {
+      targetRow = undefined
+    }
+    if (!targetRow) {
+      const [inserted] = outline.insertRows([createRowSourceFromInline(sourceRow)], targetParent)
+      targetRow = inserted
+      context.docMap.set(String(targetRow.id), targetRow)
+      if (inlineId && !context.docMap.has(inlineId)) {
+        context.docMap.set(inlineId, targetRow)
+      }
+    }
+    queueInlineIdUpdate(context.inlineUpdates, sourceRow, targetRow.id)
+    context.matched.add(targetRow)
+    syncRowContentFromInline(sourceRow, targetRow)
+    syncInlineToDocRows(sourceRow.children, targetRow, context)
+    desired.push(targetRow)
+  }
+
+  context.desiredChildren.set(targetParent, desired)
+}
+
+function applyOrdering(outline: Outline, desiredChildren: Map<Row, Row[]>): void {
+  for (const [parent, desired] of desiredChildren) {
+    for (let index = desired.length - 1; index >= 0; index -= 1) {
+      const row = desired[index]
+      const before = desired[index + 1]
+      if (row.parent !== parent || row.nextSibling !== before) {
+        if (!isAncestorOf(row, parent)) {
+          outline.moveRows([row], parent, before)
+        }
+      }
+    }
+  }
+}
+
+function removeExtraChildren(outline: Outline, desiredChildren: Map<Row, Row[]>): void {
+  for (const [parent, desired] of desiredChildren) {
+    const desiredIds = new Set(desired.map((row) => String(row.id)))
+    const removable = parent.children.filter((child) => !desiredIds.has(String(child.id)))
+    if (removable.length > 0) {
+      outline.removeRows(removable)
+    }
+  }
+}
+
+function collectSubtreeRows(root: Row): Row[] {
+  const rows: Row[] = []
+  const stack = root.children.slice().reverse()
+  while (stack.length > 0) {
+    const row = stack.pop()
+    if (!row) break
+    rows.push(row)
+    for (let index = row.children.length - 1; index >= 0; index -= 1) {
+      stack.push(row.children[index])
+    }
+  }
+  return rows
+}
+
+function isAncestorOf(candidate: Row, other: Row): boolean {
+  let current = other.parent
+  while (current) {
+    if (current === candidate) return true
+    current = current.parent
+  }
+  return false
+}
+
+
+type RowAttributeOptions = {
+  includeInlineId?: boolean
+  ignoreInlineId?: boolean
+  inlineId?: string
+}
+
+function syncRowContentFromDoc(sourceRow: Row, targetRow: Row): void {
+  if (targetRow.type !== sourceRow.type) {
+    targetRow.type = sourceRow.type
+  }
+  if (serializeText(targetRow) !== serializeText(sourceRow)) {
+    targetRow.text = sourceRow.text
+  }
+  syncRowAttributes(sourceRow, targetRow, {
+    includeInlineId: true,
+    inlineId: String(sourceRow.id)
+  })
+}
+
+function syncRowContentFromInline(sourceRow: Row, targetRow: Row): void {
+  if (targetRow.type !== sourceRow.type) {
+    targetRow.type = sourceRow.type
+  }
+  if (serializeText(targetRow) !== serializeText(sourceRow)) {
+    targetRow.text = sourceRow.text
+  }
+  syncRowAttributes(sourceRow, targetRow, { ignoreInlineId: true })
+}
+
+function syncRowAttributes(sourceRow: Row, targetRow: Row, options: RowAttributeOptions): void {
+  const desired = new Map<string, string>()
+  for (const [key, value] of Object.entries(sourceRow.attributes)) {
+    if (options.ignoreInlineId && key === INLINE_ID_ATTR) continue
+    desired.set(key, value)
+  }
+
+  if (options.includeInlineId && options.inlineId) {
+    desired.set(INLINE_ID_ATTR, options.inlineId)
+  }
+
+  for (const key of Object.keys(targetRow.attributes)) {
+    if (!desired.has(key)) {
+      targetRow.removeAttribute(key)
+    }
+  }
+  for (const [key, value] of desired) {
+    if (targetRow.attributes[key] !== value) {
+      targetRow.setAttribute(key, value)
+    }
+  }
+}
+
+function createRowSourceFromDoc(sourceRow: Row): {
+  type: string
+  text: Row['text']
+  attributes: Record<string, string>
+} {
+  return {
+    type: sourceRow.type,
+    text: sourceRow.text,
+    attributes: {
+      ...sourceRow.attributes,
+      [INLINE_ID_ATTR]: String(sourceRow.id)
+    }
+  }
+}
+
+function createRowSourceFromInline(sourceRow: Row): {
+  type: string
+  text: Row['text']
+  attributes: Record<string, string>
+} {
+  const attributes = { ...sourceRow.attributes }
+  delete attributes[INLINE_ID_ATTR]
+  return {
+    type: sourceRow.type,
+    text: sourceRow.text,
+    attributes
+  }
 }
 
 function nextRowAfterSubtree(row: Row): Row | undefined {

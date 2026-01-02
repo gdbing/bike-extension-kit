@@ -23,10 +23,12 @@ in either location propagate to the other (most-recent edit wins if both change)
   inline children are cleared.
 - If the inline marker is removed, the last inlined content remains as a
   snapshot.
-- Top-level empty rows are not synced (Bike treats them inconsistently), but
-  they are preserved locally so they don't get deleted during sync.
+- Sync updates rows in place (row-by-row) and preserves the full subtree order.
+- Inlined rows store a `data-inline-id` attribute that tracks the source row id.
+- Empty rows are synced like any other row.
 
 ## Limitations
 
 - Avoid inline cycles (A inlines B and B inlines A).
-- Sync works by copying full content, not by patching specific row changes.
+- Clearing `data-inline-id` attributes in the inline copy will force remapping
+  on the next sync.
