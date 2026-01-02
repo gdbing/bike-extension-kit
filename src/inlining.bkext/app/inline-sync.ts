@@ -1,4 +1,5 @@
 import type { Document, Outline, Row, Disposable } from 'bike/app'
+const SYNC_DELAY_MS = 1000
 const INLINE_ID_ATTR = 'data-inline-id'
 
 type DocInfo = {
@@ -62,7 +63,7 @@ export class InlineDocumentSync {
     this.syncTimer = setTimeout(() => {
       this.syncTimer = undefined
       this.syncAll()
-    }, 50)
+    }, SYNC_DELAY_MS)
   }
 
   observeOutline(outline: Outline, doc: Document): void {
@@ -95,6 +96,11 @@ export class InlineDocumentSync {
       const prevInlineSignatures = this.lastInlineSignatures
 
       this.removeMissingInlineChildren(missing)
+      if (links.length === 0) {
+        this.lastDocSignatures.clear()
+        this.lastInlineSignatures.clear()
+        return
+      }
 
       const linksByTarget = new Map<Document, InlineLink[]>()
       for (const link of links) {
@@ -235,7 +241,6 @@ export class InlineDocumentSync {
     this.withApplying(() => {
       outline.transaction({ label: `Inline ${label}` }, () => {
         syncDocToInlineRows(sourceRows, parent, context)
-        applyOrdering(outline, context.desiredChildren)
         removeExtraChildren(outline, context.desiredChildren)
       })
     })
@@ -252,7 +257,6 @@ export class InlineDocumentSync {
     this.withApplying(() => {
       outline.transaction({ label: `Inline ${label}` }, () => {
         syncInlineToDocRows(sourceRows, parent, context)
-        applyOrdering(outline, context.desiredChildren)
         removeExtraChildren(outline, context.desiredChildren)
       })
       if (context.inlineUpdates.size > 0) {
@@ -509,6 +513,8 @@ function mapRowsById(root: Row): Map<string, Row> {
 function syncDocToInlineRows(sourceRows: Row[], targetParent: Row, context: DocToInlineContext): void {
   const outline = targetParent.outline
   const desired: Row[] = []
+  const skipOrdering = orderMatchesDocToInline(targetParent, sourceRows)
+  let prevDesired: Row | undefined
 
   for (const sourceRow of sourceRows) {
     let targetRow = context.inlineMap.get(sourceRow.id)
@@ -521,9 +527,13 @@ function syncDocToInlineRows(sourceRows: Row[], targetParent: Row, context: DocT
       context.inlineMap.set(String(sourceRow.id), targetRow)
     }
     context.matched.add(targetRow)
+    if (!skipOrdering) {
+      ensureRowOrder(outline, targetParent, targetRow, prevDesired)
+    }
     syncRowContentFromDoc(sourceRow, targetRow)
     syncDocToInlineRows(sourceRow.children, targetRow, context)
     desired.push(targetRow)
+    prevDesired = targetRow
   }
 
   context.desiredChildren.set(targetParent, desired)
@@ -532,6 +542,8 @@ function syncDocToInlineRows(sourceRows: Row[], targetParent: Row, context: DocT
 function syncInlineToDocRows(sourceRows: Row[], targetParent: Row, context: InlineToDocContext): void {
   const outline = targetParent.outline
   const desired: Row[] = []
+  const skipOrdering = orderMatchesInlineToDoc(targetParent, sourceRows)
+  let prevDesired: Row | undefined
 
   for (const sourceRow of sourceRows) {
     const inlineId = getInlineId(sourceRow)
@@ -549,26 +561,16 @@ function syncInlineToDocRows(sourceRows: Row[], targetParent: Row, context: Inli
     }
     queueInlineIdUpdate(context.inlineUpdates, sourceRow, targetRow.id)
     context.matched.add(targetRow)
+    if (!skipOrdering) {
+      ensureRowOrder(outline, targetParent, targetRow, prevDesired)
+    }
     syncRowContentFromInline(sourceRow, targetRow)
     syncInlineToDocRows(sourceRow.children, targetRow, context)
     desired.push(targetRow)
+    prevDesired = targetRow
   }
 
   context.desiredChildren.set(targetParent, desired)
-}
-
-function applyOrdering(outline: Outline, desiredChildren: Map<Row, Row[]>): void {
-  for (const [parent, desired] of desiredChildren) {
-    for (let index = desired.length - 1; index >= 0; index -= 1) {
-      const row = desired[index]
-      const before = desired[index + 1]
-      if (row.parent !== parent || row.nextSibling !== before) {
-        if (!isAncestorOf(row, parent)) {
-          outline.moveRows([row], parent, before)
-        }
-      }
-    }
-  }
 }
 
 function removeExtraChildren(outline: Outline, desiredChildren: Map<Row, Row[]>): void {
@@ -578,6 +580,53 @@ function removeExtraChildren(outline: Outline, desiredChildren: Map<Row, Row[]>)
     if (removable.length > 0) {
       outline.removeRows(removable)
     }
+  }
+}
+
+function orderMatchesDocToInline(parent: Row, sourceRows: Row[]): boolean {
+  const children = parent.children
+  if (children.length !== sourceRows.length) return false
+  for (let index = 0; index < sourceRows.length; index += 1) {
+    const desiredId = String(sourceRows[index].id)
+    const actualId = getInlineId(children[index])
+    if (!actualId || actualId !== desiredId) return false
+  }
+  return true
+}
+
+function orderMatchesInlineToDoc(parent: Row, sourceRows: Row[]): boolean {
+  const children = parent.children
+  if (children.length !== sourceRows.length) return false
+  for (let index = 0; index < sourceRows.length; index += 1) {
+    const desiredId = getInlineId(sourceRows[index])
+    if (!desiredId) return false
+    if (String(children[index].id) !== desiredId) return false
+  }
+  return true
+}
+
+function ensureRowOrder(
+  outline: Outline,
+  parent: Row,
+  row: Row,
+  prevDesired: Row | undefined
+): void {
+  if (isAncestorOf(row, parent)) return
+  if (row.parent !== parent) {
+    const before = prevDesired ? prevDesired.nextSibling : parent.firstChild
+    outline.moveRows([row], parent, before)
+    return
+  }
+  if (prevDesired) {
+    if (row.prevSibling !== prevDesired) {
+      const before = prevDesired.nextSibling
+      outline.moveRows([row], parent, before)
+      return
+    }
+  } else if (row.prevSibling !== undefined) {
+    const before = parent.firstChild
+    outline.moveRows([row], parent, before)
+    return
   }
 }
 
@@ -603,7 +652,6 @@ function isAncestorOf(candidate: Row, other: Row): boolean {
   }
   return false
 }
-
 
 type RowAttributeOptions = {
   includeInlineId?: boolean
