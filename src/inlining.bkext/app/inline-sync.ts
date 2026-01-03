@@ -1,6 +1,10 @@
 import type { Document, Outline, Row, Disposable } from 'bike/app'
+
 const SYNC_DELAY_MS = 1000
 const INLINE_ID_ATTR = 'data-inline-id'
+const BACKGROUND_SLICE_ROWS = 200
+
+type SyncTimer = ReturnType<typeof setTimeout>
 
 type DocInfo = {
   document: Document
@@ -30,24 +34,37 @@ type InlineInfo = {
   needsInlineIds: boolean
 }
 
+class YieldController {
+  private rowCount = 0
+
+  async maybeYield(): Promise<void> {
+    this.rowCount += 1
+    if (this.rowCount < BACKGROUND_SLICE_ROWS) return
+    this.rowCount = 0
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  }
+}
+
 export class InlineDocumentSync {
   private docOutlines = new Map<Document, Outline>()
-  private outlineObservers = new Map<Outline, { dispose: Disposable; doc: Document }>()
+  private outlineObservers = new Map<Outline, { observer: Disposable; doc: Document }>()
   private lastDocSignatures = new Map<Document, string>()
   private lastInlineSignatures = new Map<Document, Map<string, string>>()
   private lastChangedDocument?: Document
-  private syncTimer?: number
+  private syncTimer?: SyncTimer
   private isSyncing = false
   private resyncRequested = false
   private applying = 0
+  private disposed = false
 
   start(): void {
     this.scheduleSync()
   }
 
   dispose(): void {
-    for (const observer of this.outlineObservers.values()) {
-      observer.dispose.dispose()
+    this.disposed = true
+    for (const entry of this.outlineObservers.values()) {
+      entry.observer.dispose()
     }
     this.outlineObservers.clear()
     this.lastDocSignatures.clear()
@@ -59,38 +76,44 @@ export class InlineDocumentSync {
   }
 
   scheduleSync(): void {
+    if (this.disposed) return
+    if (this.isSyncing) {
+      this.resyncRequested = true
+      return
+    }
     if (this.syncTimer !== undefined) return
     this.syncTimer = setTimeout(() => {
       this.syncTimer = undefined
-      this.syncAll()
+      void this.syncAll()
     }, SYNC_DELAY_MS)
   }
 
   observeOutline(outline: Outline, doc: Document): void {
     const existing = this.outlineObservers.get(outline)
     if (existing && existing.doc === doc) return
-    existing?.dispose.dispose()
+    existing?.observer.dispose()
     const observer = outline.streamQuery('/body', () => {
       if (this.applying > 0) return
       this.lastChangedDocument = doc
       this.scheduleSync()
     })
-    this.outlineObservers.set(outline, { dispose: observer, doc })
+    this.outlineObservers.set(outline, { observer, doc })
   }
 
-  private syncAll(): void {
+  private async syncAll(): Promise<void> {
     if (this.isSyncing) {
       this.resyncRequested = true
       return
     }
     this.isSyncing = true
+    const yieldController = new YieldController()
     try {
       const docInfos = this.collectDocumentInfos()
       const outlineDocs = new Map<Outline, Document>(docInfos.map((info) => [info.outline, info.document]))
       this.updateOutlineObservers(outlineDocs)
 
       const docsByName = indexDocumentsByName(docInfos)
-      const { links, missing } = collectInlineHeadings(docInfos, docsByName)
+      const { links, missing } = await collectInlineHeadings(docInfos, docsByName, yieldController)
 
       const prevDocSignatures = this.lastDocSignatures
       const prevInlineSignatures = this.lastInlineSignatures
@@ -111,26 +134,11 @@ export class InlineDocumentSync {
         } else {
           linksByTarget.set(targetDoc, [link])
         }
+        await yieldController.maybeYield()
       }
 
-      const initialDocSignatures = new Map<Document, string>()
-      for (const info of docInfos) {
-        initialDocSignatures.set(
-          info.document,
-          serializeRows(info.outline.root.children, { ignoreInlineId: true })
-        )
-      }
-
-      const initialInlineSignatures = new Map<Document, Map<string, string>>()
-      for (const link of links) {
-        const inlineSig = serializeRows(link.heading.children, { ignoreInlineId: true })
-        let inlineMap = initialInlineSignatures.get(link.hostDoc)
-        if (!inlineMap) {
-          inlineMap = new Map()
-          initialInlineSignatures.set(link.hostDoc, inlineMap)
-        }
-        inlineMap.set(link.heading.id, inlineSig)
-      }
+      const initialDocSignatures = await collectDocSignatures(docInfos, yieldController)
+      const initialInlineSignatures = await collectInlineSignatures(links, yieldController)
 
       for (const [targetDoc, linkGroup] of linksByTarget) {
         let docSig = initialDocSignatures.get(targetDoc)
@@ -178,7 +186,7 @@ export class InlineDocumentSync {
             inlineSource.link.targetDoc.displayName,
             inlineSource.link.hostOutline
           )
-          docSig = serializeRows(targetOutline.root.children, { ignoreInlineId: true })
+          docSig = await serializeRows(targetOutline.root.children, { ignoreInlineId: true }, yieldController)
         }
 
         const docRows = linkGroup[0].targetDoc.outline.root.children
@@ -187,32 +195,19 @@ export class InlineDocumentSync {
             this.syncInlineFromDoc(info.link.heading, docRows, info.link.targetDoc.displayName)
           }
         }
+        await yieldController.maybeYield()
       }
 
-      const finalDocSignatures = new Map<Document, string>()
-      for (const info of docInfos) {
-        finalDocSignatures.set(
-          info.document,
-          serializeRows(info.outline.root.children, { ignoreInlineId: true })
-        )
-      }
-
-      const finalInlineSignatures = new Map<Document, Map<string, string>>()
-      for (const link of links) {
-        const inlineSig = serializeRows(link.heading.children, { ignoreInlineId: true })
-        let inlineMap = finalInlineSignatures.get(link.hostDoc)
-        if (!inlineMap) {
-          inlineMap = new Map()
-          finalInlineSignatures.set(link.hostDoc, inlineMap)
-        }
-        inlineMap.set(link.heading.id, inlineSig)
-      }
+      const finalDocSignatures = await collectDocSignatures(docInfos, yieldController)
+      const finalInlineSignatures = await collectInlineSignatures(links, yieldController)
 
       this.lastDocSignatures = finalDocSignatures
       this.lastInlineSignatures = finalInlineSignatures
+    } catch (error) {
+      console.error('Inlining: Sync failed', error)
     } finally {
       this.isSyncing = false
-      if (this.resyncRequested) {
+      if (this.resyncRequested && !this.disposed) {
         this.resyncRequested = false
         this.scheduleSync()
       }
@@ -225,7 +220,7 @@ export class InlineDocumentSync {
     }
     for (const [outline, observer] of this.outlineObservers) {
       if (!outlineDocs.has(outline)) {
-        observer.dispose.dispose()
+        observer.observer.dispose()
         this.outlineObservers.delete(outline)
       }
     }
@@ -366,10 +361,11 @@ function indexDocumentsByName(docInfos: DocInfo[]): Map<string, DocInfo> {
   return map
 }
 
-function collectInlineHeadings(
+async function collectInlineHeadings(
   docInfos: DocInfo[],
-  docsByName: Map<string, DocInfo>
-): { links: InlineLink[]; missing: InlineHeading[] } {
+  docsByName: Map<string, DocInfo>,
+  yieldController: YieldController
+): Promise<{ links: InlineLink[]; missing: InlineHeading[] }> {
   const links: InlineLink[] = []
   const missing: InlineHeading[] = []
 
@@ -395,9 +391,11 @@ function collectInlineHeadings(
           })
         }
         row = nextRowAfterSubtree(row)
+        await yieldController.maybeYield()
         continue
       }
       row = row.nextInOutline
+      await yieldController.maybeYield()
     }
   }
 
@@ -412,12 +410,48 @@ function pickInlineSource(inlineChanged: InlineInfo[], lastChangedDocument?: Doc
   return inlineChanged[0]
 }
 
+async function collectDocSignatures(
+  docInfos: DocInfo[],
+  yieldController: YieldController
+): Promise<Map<Document, string>> {
+  const signatures = new Map<Document, string>()
+  for (const info of docInfos) {
+    const signature = await serializeRows(info.outline.root.children, { ignoreInlineId: true }, yieldController)
+    signatures.set(info.document, signature)
+  }
+  return signatures
+}
+
+async function collectInlineSignatures(
+  links: InlineLink[],
+  yieldController: YieldController
+): Promise<Map<Document, Map<string, string>>> {
+  const signatures = new Map<Document, Map<string, string>>()
+  for (const link of links) {
+    const inlineSig = await serializeRows(link.heading.children, { ignoreInlineId: true }, yieldController)
+    let inlineMap = signatures.get(link.hostDoc)
+    if (!inlineMap) {
+      inlineMap = new Map()
+      signatures.set(link.hostDoc, inlineMap)
+    }
+    inlineMap.set(link.heading.id, inlineSig)
+  }
+  return signatures
+}
+
 type SerializeOptions = {
   ignoreInlineId?: boolean
 }
 
-function serializeRows(rows: Row[], options: SerializeOptions = {}): string {
-  const snapshots = rows.map((row) => serializeRow(row, options))
+async function serializeRows(
+  rows: Row[],
+  options: SerializeOptions,
+  yieldController: YieldController
+): Promise<string> {
+  const snapshots: RowSnapshot[] = []
+  for (const row of rows) {
+    snapshots.push(await serializeRow(row, options, yieldController))
+  }
   return JSON.stringify(snapshots)
 }
 
@@ -428,13 +462,26 @@ type RowSnapshot = {
   children: RowSnapshot[]
 }
 
-function serializeRow(row: Row, options: SerializeOptions): RowSnapshot {
+async function serializeRow(row: Row, options: SerializeOptions, yieldController: YieldController): Promise<RowSnapshot> {
+  await yieldController.maybeYield()
   return {
     type: row.type,
     text: serializeText(row),
     attributes: serializeAttributes(row.attributes, options),
-    children: row.children.map((child) => serializeRow(child, options))
+    children: await serializeRowChildren(row.children, options, yieldController)
   }
+}
+
+async function serializeRowChildren(
+  rows: Row[],
+  options: SerializeOptions,
+  yieldController: YieldController
+): Promise<RowSnapshot[]> {
+  const snapshots: RowSnapshot[] = []
+  for (const row of rows) {
+    snapshots.push(await serializeRow(row, options, yieldController))
+  }
+  return snapshots
 }
 
 function serializeAttributes(
