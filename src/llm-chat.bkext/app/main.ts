@@ -129,15 +129,21 @@ export async function activate(context: AppExtensionContext) {
   console.log(`LLM Chat: Activated (instance ${INSTANCE_ID})`)
 
   let outlineObserver: { dispose: () => void } | undefined
+  let outlineTextObserver: { dispose: () => void } | undefined
 
   const attachEditorObserver = (editor?: OutlineEditor) => {
     outlineObserver?.dispose()
     outlineObserver = undefined
+    outlineTextObserver?.dispose()
+    outlineTextObserver = undefined
 
     if (!editor) return
 
     updateMarkerAttributes(editor.outline.root)
-    outlineObserver = editor.outline.streamQuery('/body@text', () => {
+    outlineObserver = editor.outline.streamQuery('/body', () => {
+      updateMarkerAttributes(editor.outline.root)
+    })
+    outlineTextObserver = editor.outline.streamQuery('/body@text', () => {
       updateMarkerAttributes(editor.outline.root)
     })
   }
@@ -147,7 +153,10 @@ export async function activate(context: AppExtensionContext) {
   const editorObserver = bike.observeFrontmostOutlineEditor(attachEditorObserver)
   context['llm-chat-editor-observer'] = editorObserver
   context['llm-chat-outline-observer'] = {
-    dispose: () => outlineObserver?.dispose()
+    dispose: () => {
+      outlineObserver?.dispose()
+      outlineTextObserver?.dispose()
+    }
   }
 
   bike.observeWindows(async (window) => {
