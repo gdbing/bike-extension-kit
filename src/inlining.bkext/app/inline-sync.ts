@@ -51,6 +51,7 @@ export class InlineDocumentSync {
   private lastDocSignatures = new Map<Document, string>()
   private lastInlineSignatures = new Map<Document, Map<string, string>>()
   private lastChangedDocument?: Document
+  private syncGeneration = 0
   private syncTimer?: SyncTimer
   private isSyncing = false
   private resyncRequested = false
@@ -77,15 +78,12 @@ export class InlineDocumentSync {
 
   scheduleSync(): void {
     if (this.disposed) return
+    this.syncGeneration += 1
     if (this.isSyncing) {
       this.resyncRequested = true
       return
     }
-    if (this.syncTimer !== undefined) return
-    this.syncTimer = setTimeout(() => {
-      this.syncTimer = undefined
-      void this.syncAll()
-    }, SYNC_DELAY_MS)
+    this.scheduleSyncTimer()
   }
 
   observeOutline(outline: Outline, doc: Document): void {
@@ -106,7 +104,9 @@ export class InlineDocumentSync {
       return
     }
     this.isSyncing = true
+    const runGeneration = this.syncGeneration
     const yieldController = new YieldController()
+    const isSuperseded = () => runGeneration !== this.syncGeneration
     try {
       const docInfos = this.collectDocumentInfos()
       const outlineDocs = new Map<Outline, Document>(docInfos.map((info) => [info.outline, info.document]))
@@ -114,12 +114,14 @@ export class InlineDocumentSync {
 
       const docsByName = indexDocumentsByName(docInfos)
       const { links, missing } = await collectInlineHeadings(docInfos, docsByName, yieldController)
+      if (isSuperseded()) return
 
       const prevDocSignatures = this.lastDocSignatures
       const prevInlineSignatures = this.lastInlineSignatures
 
-      this.removeMissingInlineChildren(missing)
       if (links.length === 0) {
+        if (isSuperseded()) return
+        this.removeMissingInlineChildren(missing)
         this.lastDocSignatures.clear()
         this.lastInlineSignatures.clear()
         return
@@ -139,6 +141,9 @@ export class InlineDocumentSync {
 
       const initialDocSignatures = await collectDocSignatures(docInfos, yieldController)
       const initialInlineSignatures = await collectInlineSignatures(links, yieldController)
+      if (isSuperseded()) return
+
+      this.removeMissingInlineChildren(missing)
 
       for (const [targetDoc, linkGroup] of linksByTarget) {
         let docSig = initialDocSignatures.get(targetDoc)
@@ -209,9 +214,18 @@ export class InlineDocumentSync {
       this.isSyncing = false
       if (this.resyncRequested && !this.disposed) {
         this.resyncRequested = false
-        this.scheduleSync()
+        this.scheduleSyncTimer()
       }
     }
+  }
+
+  private scheduleSyncTimer(): void {
+    if (this.disposed) return
+    if (this.syncTimer !== undefined) return
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = undefined
+      void this.syncAll()
+    }, SYNC_DELAY_MS)
   }
 
   private updateOutlineObservers(outlineDocs: Map<Outline, Document>): void {
@@ -348,11 +362,14 @@ type InlineToDocContext = {
   docMap: Map<string, Row>
 }
 
+function normalizeDocName(name: string): string {
+  return name.trim().toLowerCase()
+}
 
 function indexDocumentsByName(docInfos: DocInfo[]): Map<string, DocInfo> {
   const map = new Map<string, DocInfo>()
   for (const info of docInfos) {
-    const name = info.displayName.trim()
+    const name = normalizeDocName(info.displayName)
     if (!name) continue
     if (!map.has(name)) {
       map.set(name, info)
@@ -503,7 +520,7 @@ function getInlineTargetName(row: Row): string | null {
   const trimmed = row.text.string.trim()
   const match = trimmed.match(/^<inline:\s*(.+?)\s*>$/i)
   if (!match) return null
-  const name = match[1].trim()
+  const name = normalizeDocName(match[1])
   return name ? name : null
 }
 
