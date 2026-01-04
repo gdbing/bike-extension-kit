@@ -13,6 +13,7 @@
 
 ## Additional Documentation
 - Available docs for extra context: `app-context-tutorial.md`, `dom-context-tutorial.md`, `style-context-tutorial.md`, `creating-extensions.md`.
+- See `CLAUDE.md` for Bike app context usage patterns and AppleScript `evaluate` tips.
 
 ## Build, Test, and Development Commands
 - `npm run new`: scaffold a new extension in `src/`.
@@ -44,3 +45,9 @@
 ## Configuration & Security Notes
 - Runtime configuration is in `src/<extension>.bkext/config.json`.
 - Network access is governed by `manifest.json` `host_permissions`; keep scopes minimal.
+
+## Bike `evaluate` Notes (AppleScript)
+- Use `osascript -l JavaScript <<'EOF'` and pass `script: \`...\`` in `bike.evaluate` to avoid shell escaping issues.
+- Avoid unescaped `${...}` or stray backticks in the embedded script; they can trigger JS parse errors in `osascript`.
+- Input/output are strings only; use `JSON.stringify()` and `JSON.parse()` for structured data.
+- Prefer `var` for values that must persist across evaluate calls (per `CLAUDE.md`).
