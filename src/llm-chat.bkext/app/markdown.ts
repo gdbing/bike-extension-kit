@@ -235,8 +235,9 @@ function parseMarkdownLine(line: string): {
     return { text: parsed.text, type: 'ordered', runs: parsed.runs }
   }
 
-  if (line.startsWith('- ')) {
-    const content = line.slice(2)
+  const unorderedMatch = line.match(/^(?:-|\*|\u2022)\s+/)
+  if (unorderedMatch) {
+    const content = line.slice(unorderedMatch[0].length)
     const parsed = parseInlineMarkdown(content)
     return { text: parsed.text, type: 'unordered', runs: parsed.runs }
   }
@@ -252,9 +253,9 @@ function parseMarkdownLine(line: string): {
 }
 
 function parseTaskPrefix(line: string): { checked: boolean; text: string } | null {
-  const dashed = line.match(/^-\s+\[( |x|X)\]\s+/)
-  if (dashed) {
-    return { checked: dashed[1].toLowerCase() === 'x', text: line.slice(dashed[0].length) }
+  const bullet = line.match(/^(?:-|\*|\u2022)\s+\[( |x|X)\]\s+/)
+  if (bullet) {
+    return { checked: bullet[1].toLowerCase() === 'x', text: line.slice(bullet[0].length) }
   }
   const plain = line.match(/^\[( |x|X)\]\s+/)
   if (plain) {

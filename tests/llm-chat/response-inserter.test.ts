@@ -98,6 +98,8 @@ test('insertStaticResponse converts markdown rows and inline formatting', () => 
     '# Heading',
     '## H2 Heading',
     '- Bullet with **bold**',
+    '* Star bullet',
+    '\u2022 Dot bullet',
     '1. First',
     '2. Second',
     '> Quote with *italic*',
@@ -113,7 +115,7 @@ test('insertStaticResponse converts markdown rows and inline formatting', () => 
   const assistantRow = outline.root.children[1]
   const rows = assistantRow.children
 
-  assert.equal(rows.length, 11)
+  assert.equal(rows.length, 13)
 
   assert.equal(rows[0].type, 'heading')
   assert.equal(rows[0].text.string, 'Heading')
@@ -125,36 +127,42 @@ test('insertStaticResponse converts markdown rows and inline formatting', () => 
   assert.equal(rows[2].text.string, 'Bullet with bold')
   assertAttribute(rows[2], 'bold', 'strong')
 
-  assert.equal(rows[3].type, 'ordered')
-  assert.equal(rows[3].text.string, 'First')
+  assert.equal(rows[3].type, 'unordered')
+  assert.equal(rows[3].text.string, 'Star bullet')
 
-  assert.equal(rows[4].type, 'ordered')
-  assert.equal(rows[4].text.string, 'Second')
+  assert.equal(rows[4].type, 'unordered')
+  assert.equal(rows[4].text.string, 'Dot bullet')
 
-  assert.equal(rows[5].type, 'quote')
-  assert.equal(rows[5].text.string, 'Quote with italic')
-  assertAttribute(rows[5], 'italic', 'em')
+  assert.equal(rows[5].type, 'ordered')
+  assert.equal(rows[5].text.string, 'First')
 
-  assert.equal(rows[6].type, 'task')
-  assert.equal(rows[6].text.string, 'Task one')
-  assert.equal(rows[6].attributes?.done, undefined)
+  assert.equal(rows[6].type, 'ordered')
+  assert.equal(rows[6].text.string, 'Second')
 
-  assert.equal(rows[7].type, 'task')
-  assert.equal(rows[7].text.string, 'Task done')
-  assertDoneAttribute(rows[7])
+  assert.equal(rows[7].type, 'quote')
+  assert.equal(rows[7].text.string, 'Quote with italic')
+  assertAttribute(rows[7], 'italic', 'em')
 
   assert.equal(rows[8].type, 'task')
-  assert.equal(rows[8].text.string, 'Task dashed')
+  assert.equal(rows[8].text.string, 'Task one')
   assert.equal(rows[8].attributes?.done, undefined)
 
   assert.equal(rows[9].type, 'task')
-  assert.equal(rows[9].text.string, 'Task dashed done')
+  assert.equal(rows[9].text.string, 'Task done')
   assertDoneAttribute(rows[9])
 
-  assert.equal(rows[10].text.string, 'Plain code and strike and link')
-  assertAttribute(rows[10], 'code', 'code')
-  assertAttribute(rows[10], 'strike', 's')
-  assertAttribute(rows[10], 'link', 'a', 'http://example.com')
+  assert.equal(rows[10].type, 'task')
+  assert.equal(rows[10].text.string, 'Task dashed')
+  assert.equal(rows[10].attributes?.done, undefined)
+
+  assert.equal(rows[11].type, 'task')
+  assert.equal(rows[11].text.string, 'Task dashed done')
+  assertDoneAttribute(rows[11])
+
+  assert.equal(rows[12].text.string, 'Plain code and strike and link')
+  assertAttribute(rows[12], 'code', 'code')
+  assertAttribute(rows[12], 'strike', 's')
+  assertAttribute(rows[12], 'link', 'a', 'http://example.com')
 })
 
 test('insertStaticResponse normalizes indentation to the first indent', () => {
