@@ -72,10 +72,10 @@ class DebugHandler(BaseHTTPRequestHandler):
                 # Show content with visible whitespace markers
                 lines = content.split("\n")
                 for j, line in enumerate(lines):
-                    # Show leading whitespace as dots for visibility
+                    # Show leading whitespace with explicit markers.
                     stripped = line.lstrip()
-                    indent = len(line) - len(stripped)
-                    indent_marker = "·" * indent if indent > 0 else ""
+                    prefix = line[: len(line) - len(stripped)]
+                    indent_marker = prefix.replace("\t", "⇥").replace(" ", "·")
                     print(f"  {j+1:3}: {indent_marker}{stripped}")
                 print("-" * 40)
                 print(f"  (raw length: {len(content)} chars, {len(lines)} lines)")
