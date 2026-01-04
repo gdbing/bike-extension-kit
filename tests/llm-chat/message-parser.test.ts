@@ -748,3 +748,204 @@ test('throws on inline cycles', () => {
     }
   )
 })
+
+test('converts special row types to markdown prefixes', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        { text: 'Heading', type: 'heading', key: 'heading' },
+        { text: 'Quote me', type: 'quote', key: 'quote' },
+        { text: 'Bullet', type: 'unordered', key: 'bullet' },
+        { text: 'First', type: 'ordered', key: 'first' },
+        { text: 'Second', type: 'ordered', key: 'second' },
+        { text: 'Todo', type: 'task', key: 'todo' },
+        {
+          text: 'Done',
+          type: 'task',
+          key: 'done',
+          attributes: { done: '2026-01-04T07:19:54.573Z' }
+        }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['done']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content:
+      '# Heading\n' +
+      '> Quote me\n' +
+      '- Bullet\n' +
+      '1. First\n' +
+      '2. Second\n' +
+      '[ ] Todo\n' +
+      '[x] Done\n'
+  })
+})
+
+test('ordered list numbering continues across noncontiguous siblings', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        { text: 'one', type: 'ordered', key: 'one' },
+        { text: 'two', type: 'ordered', key: 'two' },
+        { text: 'break', key: 'break' },
+        { text: 'three', type: 'ordered', key: 'three' }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['three']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: '1. one\n2. two\nbreak\n3. three\n'
+  })
+})
+
+test('converts nested special rows with indentation', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        {
+          text: 'Parent',
+          key: 'parent',
+          children: [
+            { text: 'Child bullet', type: 'unordered', key: 'child-bullet' },
+            { text: 'Child quote', type: 'quote', key: 'child-quote' },
+            { text: 'Child ordered', type: 'ordered', key: 'child-ordered' }
+          ]
+        }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['child-ordered']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content: 'Parent\n\t- Child bullet\n\t> Child quote\n\t1. Child ordered\n'
+  })
+})
+
+test('wraps consecutive code rows in fenced blocks', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        {
+          text: 'code 1',
+          type: 'code',
+          key: 'code-1',
+          children: [{ text: 'code 1.1', type: 'code', key: 'code-1-1' }]
+        },
+        { text: 'code 2', type: 'code', key: 'code-2' },
+        { text: 'break', key: 'break' },
+        { text: 'code 3', type: 'code', key: 'code-3' }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['code-3']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content:
+      '```\n' +
+      'code 1\n' +
+      '\tcode 1.1\n' +
+      'code 2\n' +
+      '```\n' +
+      'break\n' +
+      '```\n' +
+      'code 3\n' +
+      '```\n'
+  })
+})
+
+test('converts attributed text to markdown, including inside special rows', () => {
+  const richText = 'italic bold code strike link highlight'
+  const richAttributes = [
+    makeAttributeRun(richText, 'italic', 'em'),
+    makeAttributeRun(richText, 'bold', 'strong'),
+    makeAttributeRun(richText, 'code', 'code'),
+    makeAttributeRun(richText, 'strike', 's'),
+    makeAttributeRun(richText, 'link', 'a', 'http://example.com'),
+    makeAttributeRun(richText, 'highlight', 'mark')
+  ]
+
+  const listText = 'bold item'
+  const listAttributes = [
+    makeAttributeRun(listText, 'bold', 'strong')
+  ]
+
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      key: 'user',
+      children: [
+        {
+          text: richText,
+          key: 'rich',
+          textAttributes: richAttributes
+        },
+        {
+          text: listText,
+          type: 'unordered',
+          key: 'list',
+          textAttributes: listAttributes
+        }
+      ]
+    }
+  ])
+
+  const stopRow = byKey['list']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any)
+
+  assert.equal(messages.length, 1)
+  assert.deepEqual(messages[0], {
+    role: 'user',
+    content:
+      '*italic* **bold** `code` ~strike~ [link](http://example.com) highlight\n' +
+      '- **bold** item\n'
+  })
+})
+
+function makeAttributeRun(
+  text: string,
+  fragment: string,
+  name: string,
+  value?: string
+): { start: number; end: number; name: string; value?: string } {
+  const start = text.indexOf(fragment)
+  if (start === -1) {
+    throw new Error(`Missing fragment: ${fragment}`)
+  }
+  return { start, end: start + fragment.length, name, value }
+}
