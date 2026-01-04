@@ -932,7 +932,7 @@ test('converts attributed text to markdown, including inside special rows', () =
   assert.deepEqual(messages[0], {
     role: 'user',
     content:
-      '*italic* **bold** `code` ~strike~ [link](http://example.com) highlight\n' +
+      '*italic* **bold** `code` ~~strike~~ [link](http://example.com) highlight\n' +
       '- **bold** item\n'
   })
 })

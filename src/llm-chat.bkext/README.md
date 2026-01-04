@@ -75,6 +75,7 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 - Streaming responses (tokens appear as they arrive)
 - Conversation history (multiple user/assistant exchanges)
 - System prompts for custom behavior
+- Markdown conversion for special row types and rich text (lists, headings, quotes, tasks, code)
 - Note-type rows are treated as comments (excluded from messages)
 - Strict nesting: only indented content is included in messages
 - Configurable server endpoint, polling interval, and default model (`config.json`)
@@ -85,6 +86,8 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 - `<user>` → user role, `<system>` → system role, any other marker → assistant role.
 - `<cache>` marks the next message for a 1-hour cache breakpoint (latest `<cache>` wins, Anthropic only).
 - Only content nested under a marker is included; note rows and their descendants are skipped.
+- Special row types are converted to Markdown (`#` headings, `>` quotes, ordered/unordered/task lists, fenced code blocks).
+- Rich text attributes are converted to inline Markdown (`*italic*`, `**bold**`, `` `code` ``, `~~strikethrough~~`, `[links](url)`); highlights are ignored.
 - Parsing stops after the marker that contains the cursor row.
 - Tags are indented `<name>` rows inside a message; they emit open/close tags and de-indent their contents.
 - `<inline>` markers are root-level rows whose children list file URLs (or document display names). Each target document must be open in Bike; its messages are parsed and inserted at the marker position. Inline resolution follows link attributes first, then visible text, and cycles are errors.

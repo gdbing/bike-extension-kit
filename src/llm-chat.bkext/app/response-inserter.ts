@@ -1,5 +1,6 @@
 import { Outline, Row } from 'bike/app'
 import { setMarkerAttribute } from './marker-attributes'
+import { parseMarkdownToRows, ParsedMarkdownRow, TextAttributeRun } from './markdown'
 
 /**
  * Create a new marker row after the given row.
@@ -44,14 +45,7 @@ export function insertStaticResponse(
   const targetRow = prepareMarkerRow(outline, afterRow, markerText)
 
   const normalized = text.replace(/\r\n/g, '\n')
-  const lines = normalized.split('\n')
-
-  const rows = lines.map(line => ({ text: line }))
-  const inserted = outline.insertRows(rows, targetRow)
-
-  if (inserted.length === 0) {
-    outline.insertRows([{ text: '' }], targetRow)
-  }
+  replaceRowsWithMarkdown(outline, targetRow, normalized)
 }
 
 /**
@@ -120,5 +114,52 @@ export async function streamResponseToOutline(
   // Remove empty trailing row if exists
   if (currentRow.text.string === '') {
     outline.removeRows([currentRow])
+  }
+
+  const rawLines = assistantRow.children.map(row => row.text.string)
+  const rawText = rawLines.join('\n')
+  replaceRowsWithMarkdown(outline, assistantRow, rawText)
+}
+
+function replaceRowsWithMarkdown(outline: Outline, parent: Row, markdown: string): void {
+  const parsed = parseMarkdownToRows(markdown)
+  if (parent.children.length) {
+    outline.removeRows([...parent.children])
+  }
+  if (parsed.length === 0) {
+    outline.insertRows([{ text: '' }], parent)
+    return
+  }
+  insertParsedRows(outline, parent, parsed)
+}
+
+function insertParsedRows(
+  outline: Outline,
+  parent: Row,
+  rows: ParsedMarkdownRow[]
+): void {
+  const templates = rows.map(row => ({
+    text: row.text,
+    type: row.type,
+    attributes: row.attributes
+  }))
+  const inserted = outline.insertRows(templates, parent)
+
+  for (let index = 0; index < inserted.length; index += 1) {
+    const created = inserted[index]
+    const source = rows[index]
+    if (source.runs?.length) {
+      applyTextRuns(created.text, source.runs)
+    }
+    if (source.children.length) {
+      insertParsedRows(outline, created, source.children)
+    }
+  }
+}
+
+function applyTextRuns(text: Row['text'], runs: TextAttributeRun[]): void {
+  for (const run of runs) {
+    if (run.end <= run.start) continue
+    text.addAttribute(run.name, run.value ?? '', [run.start, run.end])
   }
 }

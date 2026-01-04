@@ -105,7 +105,7 @@ test('insertStaticResponse converts markdown rows and inline formatting', () => 
     '[x] Task done',
     '- [ ] Task dashed',
     '- [x] Task dashed done',
-    'Plain `code` and ~strike~ and [link](http://example.com)'
+    'Plain `code` and ~~strike~~ and [link](http://example.com)'
   ].join('\n')
 
   insertStaticResponse(outline as any, userRow as any, markdown)

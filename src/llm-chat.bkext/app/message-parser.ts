@@ -2,6 +2,7 @@ import type { Row } from 'bike/app'
 import { collectInlineReferences, getLastRow, InlineResolver, resolveInlineReference } from './inline-resolver'
 import { Message } from './providers/types'
 import { isDescendant, nextRowAfterSubtree } from './outline-walk'
+import { attributedTextToMarkdown } from './markdown'
 
 type ParseOptions = {
   inlineResolver?: InlineResolver
@@ -35,6 +36,7 @@ function parseMessagesInternal(
   let row: Row | undefined = root.firstChild
   const tagStack: { row: Row; name: string; indent: number }[] = []
   let pendingCacheTtl: '1h' | null = null
+  let codeBlockIndent: number | null = null
 
   if (!stopRow) return messages
 
@@ -50,6 +52,18 @@ function parseMessagesInternal(
     currentMessage.content += '\t'.repeat(Math.max(0, indent)) + text + '\n'
   }
 
+  const openCodeBlock = (indent: number) => {
+    if (codeBlockIndent !== null) return
+    appendLine(indent, '```')
+    codeBlockIndent = indent
+  }
+
+  const closeCodeBlock = () => {
+    if (codeBlockIndent === null) return
+    appendLine(codeBlockIndent, '```')
+    codeBlockIndent = null
+  }
+
   const closeTag = (tag: { name: string; indent: number }) => {
     appendLine(tag.indent, `</${tag.name}>`)
   }
@@ -60,17 +74,63 @@ function parseMessagesInternal(
       if (nextRow && isDescendant(nextRow, top.row)) {
         break
       }
+      if (codeBlockIndent !== null) {
+        closeCodeBlock()
+      }
       closeTag(top)
       tagStack.pop()
     }
   }
 
   const closeAllTags = () => {
+    if (codeBlockIndent !== null) {
+      closeCodeBlock()
+    }
     closeTagsUntilRow(undefined)
+  }
+
+  const orderedIndexForRow = (target: Row): number => {
+    const parent = target.parent
+    if (!parent) return 1
+    let index = 0
+    for (const sibling of parent.children) {
+      if (sibling.type === 'ordered') {
+        index += 1
+      }
+      if (sibling.id === target.id) {
+        return index || 1
+      }
+    }
+    return 1
+  }
+
+  const formatRowText = (row: Row): string => {
+    const text = attributedTextToMarkdown(row.text)
+    switch (row.type) {
+      case 'heading':
+        return `# ${text}`
+      case 'quote':
+        return `> ${text}`
+      case 'unordered':
+        return `- ${text}`
+      case 'ordered': {
+        const index = orderedIndexForRow(row)
+        return `${index}. ${text}`
+      }
+      case 'task': {
+        const isDone = typeof row.attributes?.done === 'string'
+        return `${isDone ? '[x]' : '[ ]'} ${text}`
+      }
+      default:
+        return text
+    }
   }
 
   while (row) {
     if (currentMessage && markerRow) {
+      if (codeBlockIndent !== null && row.type !== 'code') {
+        closeCodeBlock()
+      }
       closeTagsUntilRow(row)
     }
 
@@ -169,7 +229,15 @@ function parseMessagesInternal(
         appendLine(effectiveIndent, `<${tagName}>`)
         tagStack.push({ row, name: tagName, indent: effectiveIndent })
       } else {
-        appendLine(effectiveIndent, text)
+        if (row.type === 'code') {
+          openCodeBlock(effectiveIndent)
+          appendLine(effectiveIndent, row.text.string)
+        } else {
+          if (codeBlockIndent !== null) {
+            closeCodeBlock()
+          }
+          appendLine(effectiveIndent, formatRowText(row))
+        }
       }
     }
 
