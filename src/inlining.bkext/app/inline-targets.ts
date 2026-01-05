@@ -84,6 +84,10 @@ export function buildAmbiguousWarning(label: string): string {
   return `⚠️ Multiple documents named "${label}" are open`
 }
 
+export function buildCycleWarning(label: string): string {
+  return `⚠️ Inline cycle detected for "${label}"`
+}
+
 export function isWarningRow(row: Row, message: string): boolean {
   return row.type === 'note' && row.text.string === message && row.children.length === 0
 }

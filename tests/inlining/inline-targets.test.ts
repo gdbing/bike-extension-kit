@@ -3,6 +3,7 @@ import type { Document, Outline, Row } from 'bike/app'
 import type { DocInfo } from '../../src/inlining.bkext/app/inline-model'
 import {
   buildAmbiguousWarning,
+  buildCycleWarning,
   collectInlineHeadings,
   createWarningRowSource,
   getInlineTarget,
@@ -107,4 +108,9 @@ test('ambiguous warning helpers describe the target', () => {
   assert.strictEqual(message, '⚠️ Multiple documents named "Notes" are open')
   assert.ok(isWarningRow(asRow(row), message))
   assert.deepStrictEqual(createWarningRowSource(message), { type: 'note', text: message })
+})
+
+test('cycle warning helper describes the target', () => {
+  const message = buildCycleWarning('Notes')
+  assert.strictEqual(message, '⚠️ Inline cycle detected for "Notes"')
 })

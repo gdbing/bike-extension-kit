@@ -23,6 +23,7 @@ in either location propagate to the other (most-recent edit wins if both change)
 - Targets must be open in Bike.
 - If multiple open documents share the same display name, the inline marker
   shows a warning row and no sync occurs.
+- Inline cycles show a warning row and no sync occurs.
 - If the target document is closed or renamed so it no longer matches, the
   inline children are cleared.
 - If the inline marker is removed, the last inlined content remains as a
@@ -37,7 +38,6 @@ in either location propagate to the other (most-recent edit wins if both change)
 
 ## Limitations
 
-- Avoid inline cycles (A inlines B and B inlines A).
 - Clearing `data-inline-id` attributes in the inline copy will force remapping
   on the next sync.
 - Sync is eventual: edits made while a sync is running will schedule another

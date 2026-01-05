@@ -2,7 +2,15 @@ import type { Document, Outline, Row, RowId, Disposable } from 'bike/app'
 import { SYNC_DELAY_MS } from './inline-constants'
 import type { DocInfo, InlineHeading, InlineInfo, InlineLink, InlineSignatureMap } from './inline-model'
 import { decideSyncSource } from './inline-decision'
-import { collectInlineHeadings, indexDocumentsByName, buildAmbiguousWarning, createWarningRowSource, isWarningRow } from './inline-targets'
+import {
+  collectInlineHeadings,
+  getInlineTarget,
+  indexDocumentsByName,
+  buildAmbiguousWarning,
+  buildCycleWarning,
+  createWarningRowSource,
+  isWarningRow
+} from './inline-targets'
 import { collectDocSignatures, collectInlineSignatures, serializeRows } from './inline-signature'
 import {
   hasMissingInlineIds,
@@ -17,6 +25,78 @@ import type { DocToInlineContext, InlineToDocContext } from './inline-sync-rows'
 import { YieldController } from './inline-yield'
 
 type SyncTimer = ReturnType<typeof setTimeout>
+
+function splitInlineCycles(links: InlineLink[]): { links: InlineLink[]; cycles: InlineLink[] } {
+  if (links.length === 0) return { links, cycles: [] }
+  const adjacency = new Map<Document, Document[]>()
+  for (const link of links) {
+    const bucket = adjacency.get(link.hostDoc)
+    if (bucket) {
+      bucket.push(link.targetDoc.document)
+    } else {
+      adjacency.set(link.hostDoc, [link.targetDoc.document])
+    }
+  }
+
+  const reaches = (start: Document, target: Document): boolean => {
+    const visited = new Set<Document>()
+    const stack: Document[] = [start]
+    while (stack.length > 0) {
+      const doc = stack.pop()
+      if (!doc || visited.has(doc)) continue
+      if (doc === target) return true
+      visited.add(doc)
+      const next = adjacency.get(doc)
+      if (next) {
+        for (const candidate of next) {
+          if (!visited.has(candidate)) {
+            stack.push(candidate)
+          }
+        }
+      }
+    }
+    return false
+  }
+
+  const cycles: InlineLink[] = []
+  const acyclic: InlineLink[] = []
+  for (const link of links) {
+    if (reaches(link.targetDoc.document, link.hostDoc)) {
+      cycles.push(link)
+    } else {
+      acyclic.push(link)
+    }
+  }
+  return { links: acyclic, cycles }
+}
+
+function mergeInlineSignatures(
+  finalInlineSignatures: InlineSignatureMap,
+  prevInlineSignatures: InlineSignatureMap,
+  docsUpdatedFromInline: Set<Document>
+): InlineSignatureMap {
+  if (docsUpdatedFromInline.size === 0) return finalInlineSignatures
+  const merged: InlineSignatureMap = new Map()
+  for (const [doc, signatures] of finalInlineSignatures) {
+    if (docsUpdatedFromInline.has(doc)) {
+      const prev = prevInlineSignatures.get(doc)
+      if (prev) {
+        merged.set(doc, prev)
+        continue
+      }
+    }
+    merged.set(doc, signatures)
+  }
+  for (const doc of docsUpdatedFromInline) {
+    if (!merged.has(doc)) {
+      const prev = prevInlineSignatures.get(doc)
+      if (prev) {
+        merged.set(doc, prev)
+      }
+    }
+  }
+  return merged
+}
 
 export class InlineDocumentSync {
   private docOutlines = new Map<Document, Outline>()
@@ -86,14 +166,16 @@ export class InlineDocumentSync {
       this.updateOutlineObservers(outlineDocs)
 
       const docsByName = indexDocumentsByName(docInfos)
-      const { links, missing, ambiguous } = await collectInlineHeadings(docInfos, docsByName, yieldController)
+      const { links: rawLinks, missing, ambiguous } = await collectInlineHeadings(docInfos, docsByName, yieldController)
       if (isSuperseded()) return
+      const { links, cycles } = splitInlineCycles(rawLinks)
 
       const prevDocSignatures = this.lastDocSignatures
       const prevInlineSignatures = this.lastInlineSignatures
 
       this.removeMissingInlineChildren(missing)
       this.updateAmbiguousInlineChildren(ambiguous)
+      this.updateCycleInlineChildren(cycles)
 
       if (links.length === 0) {
         if (isSuperseded()) return
@@ -102,6 +184,8 @@ export class InlineDocumentSync {
         return
       }
 
+      const docsUpdatedFromInline = new Set<Document>()
+      const docsUpdatedFromDoc = new Set<Document>()
       const linksByTarget = new Map<Document, InlineLink[]>()
       for (const link of links) {
         const targetDoc = link.targetDoc.document
@@ -133,7 +217,6 @@ export class InlineDocumentSync {
           return { link, inlineSig, prevInlineSig, inlineChanged, needsInlineIds }
         })
         const inlineChangedInfos = inlineInfos.filter((info) => info.inlineChanged)
-
         const decision = decideSyncSource({
           docChanged,
           inlineChangedInfos,
@@ -144,7 +227,7 @@ export class InlineDocumentSync {
         })
         const { source, inlineSource } = decision
 
-        if (source === 'inline' && inlineSource) {
+        if (source === 'inline' && inlineSource && inlineSource.inlineSig !== docSig) {
           const targetOutline = inlineSource.link.targetDoc.outline
           this.syncDocFromInline(
             targetOutline.root,
@@ -152,6 +235,7 @@ export class InlineDocumentSync {
             inlineSource.link.targetDoc.displayName,
             inlineSource.link.hostOutline
           )
+          docsUpdatedFromInline.add(inlineSource.link.targetDoc.document)
           docSig = await serializeRows(targetOutline.root.children, { ignoreInlineId: true }, yieldController)
         }
 
@@ -159,6 +243,7 @@ export class InlineDocumentSync {
         for (const info of inlineInfos) {
           if (info.inlineSig !== docSig) {
             this.syncInlineFromDoc(info.link.heading, docRows, info.link.targetDoc.displayName)
+            docsUpdatedFromDoc.add(info.link.hostDoc)
           }
         }
         await yieldController.maybeYield()
@@ -168,7 +253,14 @@ export class InlineDocumentSync {
       const finalInlineSignatures = await collectInlineSignatures(links, yieldController)
 
       this.lastDocSignatures = finalDocSignatures
-      this.lastInlineSignatures = finalInlineSignatures
+      this.lastInlineSignatures = mergeInlineSignatures(
+        finalInlineSignatures,
+        prevInlineSignatures,
+        docsUpdatedFromInline
+      )
+      if (docsUpdatedFromInline.size > 0 || docsUpdatedFromDoc.size > 0) {
+        this.resyncRequested = true
+      }
     } catch (error) {
       console.error('Inlining: Sync failed', error)
     } finally {
@@ -288,6 +380,39 @@ export class InlineDocumentSync {
         outline.transaction({ label: 'Inline warning' }, () => {
           for (const entry of entries) {
             const message = buildAmbiguousWarning(entry.target.label)
+            const children = entry.heading.children
+            if (children.length === 1 && isWarningRow(children[0], message)) {
+              continue
+            }
+            if (children.length > 0) {
+              outline.removeRows(children)
+            }
+            outline.insertRows([createWarningRowSource(message)], entry.heading)
+          }
+        })
+      }
+    })
+  }
+
+  private updateCycleInlineChildren(cycles: InlineLink[]): void {
+    if (cycles.length === 0) return
+    this.withApplying(() => {
+      const outlines = new Map<Outline, InlineLink[]>()
+      for (const entry of cycles) {
+        const bucket = outlines.get(entry.hostOutline)
+        if (bucket) {
+          bucket.push(entry)
+        } else {
+          outlines.set(entry.hostOutline, [entry])
+        }
+      }
+
+      for (const [outline, entries] of outlines) {
+        outline.transaction({ label: 'Inline cycle' }, () => {
+          for (const entry of entries) {
+            const target = getInlineTarget(entry.heading)
+            const label = target?.label ?? entry.targetDoc.displayName
+            const message = buildCycleWarning(label)
             const children = entry.heading.children
             if (children.length === 1 && isWarningRow(children[0], message)) {
               continue
