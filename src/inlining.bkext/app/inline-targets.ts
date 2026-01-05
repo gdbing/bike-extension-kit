@@ -1,4 +1,4 @@
-import type { Row } from 'bike/app'
+import type { Row, RowTemplate } from 'bike/app'
 import type { DocInfo, InlineHeading, InlineLink, InlineTarget } from './inline-model'
 import { YieldController } from './inline-yield'
 
@@ -88,7 +88,7 @@ export function isWarningRow(row: Row, message: string): boolean {
   return row.type === 'note' && row.text.string === message && row.children.length === 0
 }
 
-export function createWarningRowSource(message: string): { type: string; text: string } {
+export function createWarningRowSource(message: string): RowTemplate {
   return {
     type: 'note',
     text: message

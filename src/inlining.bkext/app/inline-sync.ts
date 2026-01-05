@@ -1,6 +1,7 @@
 import type { Document, Outline, Row, RowId, Disposable } from 'bike/app'
 import { SYNC_DELAY_MS } from './inline-constants'
 import type { DocInfo, InlineHeading, InlineInfo, InlineLink, InlineSignatureMap } from './inline-model'
+import { decideSyncSource } from './inline-decision'
 import { collectInlineHeadings, indexDocumentsByName, buildAmbiguousWarning, createWarningRowSource, isWarningRow } from './inline-targets'
 import { collectDocSignatures, collectInlineSignatures, serializeRows } from './inline-signature'
 import {
@@ -133,27 +134,15 @@ export class InlineDocumentSync {
         })
         const inlineChangedInfos = inlineInfos.filter((info) => info.inlineChanged)
 
-        let source: 'doc' | 'inline' | null = null
-        let inlineSource: InlineInfo | undefined
-
-        if (docChanged) {
-          if (inlineChangedInfos.length === 1) {
-            const preferredInline = pickInlineSource(inlineChangedInfos, this.lastChangedDocument)
-            if (this.lastChangedDocument && preferredInline.link.hostDoc === this.lastChangedDocument) {
-              source = 'inline'
-              inlineSource = preferredInline
-            } else {
-              source = 'doc'
-            }
-          } else {
-            source = 'doc'
-          }
-        } else if (inlineChangedInfos.length === 1) {
-          source = 'inline'
-          inlineSource = pickInlineSource(inlineChangedInfos, this.lastChangedDocument)
-        } else if (inlineInfos.some((info) => info.inlineSig !== docSig || info.needsInlineIds)) {
-          source = 'doc'
-        }
+        const decision = decideSyncSource({
+          docChanged,
+          inlineChangedInfos,
+          lastChangedDocument: this.lastChangedDocument,
+          hasMismatchOrMissingIds: inlineInfos.some(
+            (info) => info.inlineSig !== docSig || info.needsInlineIds
+          )
+        })
+        const { source, inlineSource } = decision
 
         if (source === 'inline' && inlineSource) {
           const targetOutline = inlineSource.link.targetDoc.outline
@@ -353,12 +342,4 @@ export class InlineDocumentSync {
       this.docOutlines.set(frontmostDoc, frontmostOutline)
     }
   }
-}
-
-function pickInlineSource(inlineChanged: InlineInfo[], lastChangedDocument?: Document): InlineInfo {
-  if (lastChangedDocument) {
-    const match = inlineChanged.find((info) => info.link.hostDoc === lastChangedDocument)
-    if (match) return match
-  }
-  return inlineChanged[0]
 }

@@ -42,3 +42,8 @@ in either location propagate to the other (most-recent edit wins if both change)
   on the next sync.
 - Sync is eventual: edits made while a sync is running will schedule another
   pass, so updates may appear slightly delayed.
+
+## Testing
+
+- Unit tests live in `tests/inlining`.
+- Run `npm run test:inlining`.

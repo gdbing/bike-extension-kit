@@ -8,7 +8,7 @@
 - Extensions live in `src/` as `*.bkext` folders. Each extension can include `app/`, `dom/`, `style/`, `theme/`, and a `manifest.json`.
 - Build output is written to `out/extensions/`.
 - API type definitions are in `api/` (`api/app`, `api/dom`, `api/style`).
-- Tests live under `tests/` (currently LLM chat tests in `tests/llm-chat`).
+- Tests live under `tests/` (LLM chat tests in `tests/llm-chat`, inlining tests in `tests/inlining`).
 - Build and tooling scripts are in `scripts/` and TypeScript configs in `configs/`.
 
 ## Additional Documentation
@@ -22,6 +22,7 @@
 - `npm run build-internals`: build internal API components.
 - `npm run typecheck`: typecheck `src/llm-chat.bkext/` app/dom/style contexts only.
 - `npm run test:llm-chat`: compile and run the LLM chat test suite.
+- `npm run test:inlining`: compile and run the inlining test suite.
 
 ## Coding Style & Naming Conventions
 - TypeScript with strict settings (see `tsconfig.json` and `configs/`).
@@ -31,10 +32,11 @@
 
 ## Testing Guidelines
 - Current tests are TypeScript + Node-based (see `tests/llm-chat`).
-- Run with `npm run test:llm-chat`.
+- Run with `npm run test:llm-chat` or `npm run test:inlining`.
 - Tests primarily demonstrate and lock in expected behavior; keep them readable and illustrative.
 - No global coverage requirement is defined; add tests when behavior changes.
-- Always run `npm run test:llm-chat` after making changes to code or unit tests.
+- Always run `npm run test:llm-chat` after making changes to LLM chat code or tests.
+- Always run `npm run test:inlining` after making changes to inlining code or tests.
 - Never change tests without explicit instruction or permission to do so, to avoid fixing tests instead of fixing implementation.
 
 ## Commit & Pull Request Guidelines

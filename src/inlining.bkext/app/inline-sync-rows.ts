@@ -1,4 +1,4 @@
-import type { Outline, Row, RowId } from 'bike/app'
+import type { Outline, Row, RowId, RowTemplate } from 'bike/app'
 import { INLINE_ID_ATTR } from './inline-constants'
 import { serializeText } from './inline-text'
 
@@ -260,11 +260,7 @@ function syncRowAttributes(sourceRow: Row, targetRow: Row, options: RowAttribute
   }
 }
 
-function createRowSourceFromDoc(sourceRow: Row): {
-  type: string
-  text: Row['text']
-  attributes: Record<string, string>
-} {
+function createRowSourceFromDoc(sourceRow: Row): RowTemplate {
   return {
     type: sourceRow.type,
     text: sourceRow.text,
@@ -275,11 +271,7 @@ function createRowSourceFromDoc(sourceRow: Row): {
   }
 }
 
-function createRowSourceFromInline(sourceRow: Row): {
-  type: string
-  text: Row['text']
-  attributes: Record<string, string>
-} {
+function createRowSourceFromInline(sourceRow: Row): RowTemplate {
   const attributes = { ...sourceRow.attributes }
   delete attributes[INLINE_ID_ATTR]
   return {
