@@ -18,6 +18,11 @@ The server retrieves API keys automatically from:
    llm keys set openai
    # Paste your key when prompted
    ```
+   For OpenRouter:
+   ```bash
+   llm keys set openrouter
+   # Paste your key when prompted
+   ```
 
 2. **Environment variable** (fallback):
    ```bash
@@ -26,6 +31,10 @@ The server retrieves API keys automatically from:
    For OpenAI:
    ```bash
    export OPENAI_API_KEY="sk-your-key-here"
+   ```
+   For OpenRouter:
+   ```bash
+   export OPENROUTER_API_KEY="sk-or-your-key-here"
    ```
 
 ### 2. Start the server
@@ -128,7 +137,7 @@ npm run test:llm-chat
 
 ## Known limitations / future work
 
-- Model selection is basic; Anthropic and OpenAI supported today.
+- Model selection is basic; Anthropic, OpenAI, and OpenRouter supported today.
 - No request cancellation; polling-based streaming.
 - Minimal error UI; only inline message insertion.
 - Prompt caching (Anthropic only): the most recent four user messages get 5-minute cache breakpoints. A `<cache>` marker upgrades the next message and any earlier cached breakpoints (up to the 4-breakpoint limit) to 1-hour TTL.

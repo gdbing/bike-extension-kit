@@ -421,9 +421,123 @@ class OpenAIProvider(Provider):
             set_session_value(sessions, session_id, sessions_lock, "done", True)
 
 
+class OpenRouterProvider(OpenAIProvider):
+    name = "openrouter"
+
+    def stream(
+        self,
+        session_id: str,
+        messages: List[Message],
+        api_key: str,
+        model: str,
+        max_tokens: int,
+        temperature: Optional[float],
+        reasoning_effort: Optional[str],
+        sessions,
+        sessions_lock,
+    ) -> None:
+        prepared = self.prepare_messages(messages)
+        conversation = prepared["conversation"]
+        instructions = prepared["instructions"]
+
+        body: Dict[str, Union[str, bool, float, int, List[Dict[str, str]], Dict[str, str]]] = {
+            "model": model,
+            "input": conversation,  # type: ignore
+            "stream": True,
+        }
+        if max_tokens:
+            body["max_output_tokens"] = max_tokens
+        if temperature is not None:
+            body["temperature"] = temperature
+        if reasoning_effort:
+            body["reasoning"] = {"effort": reasoning_effort}
+        if instructions:
+            body["instructions"] = instructions
+
+        req = Request(
+            "https://openrouter.ai/api/v1/responses",
+            data=json.dumps(body).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+
+        try:
+            with urlopen(req) as response:
+                buffer = ""
+                for chunk in response:
+                    buffer += chunk.decode("utf-8")
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data == "[DONE]":
+                                with sessions_lock:
+                                    if session_id in sessions:
+                                        sessions[session_id]["done"] = True
+                                return
+                            try:
+                                parsed = json.loads(data)
+                                event_type = parsed.get("type")
+                                if event_type == "response.output_text.delta":
+                                    text = parsed.get("delta") or ""
+                                    if text:
+                                        def add_chunk(session):
+                                            session["chunks"].append(text)
+
+                                        touch_session(sessions, session_id, sessions_lock, add_chunk)
+                                if event_type == "response.error":
+                                    error_info = parsed.get("error") or {}
+                                    message = error_info.get("message") or str(error_info) or "Unknown error"
+                                    def set_error(session):
+                                        session["error"] = message
+                                        session["done"] = True
+
+                                    touch_session(sessions, session_id, sessions_lock, set_error)
+                                    return
+                                if event_type == "response.completed":
+                                    error_info = (parsed.get("response") or {}).get("error")
+                                    if error_info:
+                                        message = error_info.get("message") or str(error_info) or "Unknown error"
+                                        def set_error(session):
+                                            session["error"] = message
+                                            session["done"] = True
+
+                                        touch_session(sessions, session_id, sessions_lock, set_error)
+                                        return
+                                    set_session_value(
+                                        sessions,
+                                        session_id,
+                                        sessions_lock,
+                                        "done",
+                                        True
+                                    )
+                                    return
+                            except json.JSONDecodeError:
+                                pass
+        except HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            set_session_value(
+                sessions,
+                session_id,
+                sessions_lock,
+                "error",
+                f"API error ({e.code}): {error_body}"
+            )
+        except Exception as e:
+            set_session_value(sessions, session_id, sessions_lock, "error", str(e))
+        finally:
+            set_session_value(sessions, session_id, sessions_lock, "done", True)
+
+
 providers = {
     "anthropic": AnthropicProvider(),
     "openai": OpenAIProvider(),
+    "openrouter": OpenRouterProvider(),
     # Additional providers can be registered here as new classes.
 }
 

@@ -5,7 +5,7 @@ export interface ModelDefinition {
   provider: ProviderName
 }
 
-export type ProviderName = 'anthropic' | 'openai'
+export type ProviderName = 'anthropic' | 'openai' | 'openrouter'
 
 export interface ExtensionConfig {
   server: {

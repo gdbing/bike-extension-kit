@@ -14,7 +14,11 @@
     { "name": "claude-sonnet-4-5", "provider": "anthropic" },
     { "name": "claude-opus-4-5", "provider": "anthropic" },
     { "name": "gpt-5.2", "provider": "openai" },
-    { "name": "gpt-5-mini", "provider": "openai" }
+    { "name": "gpt-5-mini", "provider": "openai" },
+    { "name": "deepseek/deepseek-chat", "provider": "openrouter" },
+    { "name": "x-ai/grok-4.1-fast", "provider": "openrouter" },
+    { "name": "google/gemini-3-pro-preview", "provider": "openrouter" },
+    { "name": "google/gemini-3-flash-preview", "provider": "openrouter" }
   ],
   "ui": {
     "showErrorsInOutline": true,
