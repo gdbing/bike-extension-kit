@@ -12,7 +12,7 @@ in the background.
    <inline: Document Name>
    ```
    The document name must match the target document's display name
-   (case-insensitive, extra whitespace ignored).
+   (case-insensitive, leading/trailing whitespace ignored).
 
 The target document's entire outline becomes the children of that row. Edits
 in either location propagate to the other (most-recent edit wins if both change).
@@ -21,7 +21,8 @@ in either location propagate to the other (most-recent edit wins if both change)
 
 - Explicit only: only rows with `<inline: ...>` are inlined.
 - Targets must be open in Bike.
-- If multiple open documents share the same display name, the first match wins.
+- If multiple open documents share the same display name, the inline marker
+  shows a warning row and no sync occurs.
 - If the target document is closed or renamed so it no longer matches, the
   inline children are cleared.
 - If the inline marker is removed, the last inlined content remains as a
@@ -31,6 +32,8 @@ in either location propagate to the other (most-recent edit wins if both change)
 - Empty rows are synced like any other row.
 - Sync is debounced and time-sliced; large outlines update in batches rather
   than blocking text edits.
+- If multiple inline copies change between syncs, the target document wins and
+  inline edits are overwritten on the next sync.
 
 ## Limitations
 

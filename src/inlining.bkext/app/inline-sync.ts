@@ -12,6 +12,11 @@ type DocInfo = {
   displayName: string
 }
 
+type InlineTarget = {
+  name: string
+  label: string
+}
+
 type InlineLink = {
   heading: Row
   hostDoc: Document
@@ -23,7 +28,7 @@ type InlineHeading = {
   heading: Row
   hostDoc: Document
   hostOutline: Outline
-  targetName: string
+  target: InlineTarget
 }
 
 type InlineInfo = {
@@ -113,15 +118,17 @@ export class InlineDocumentSync {
       this.updateOutlineObservers(outlineDocs)
 
       const docsByName = indexDocumentsByName(docInfos)
-      const { links, missing } = await collectInlineHeadings(docInfos, docsByName, yieldController)
+      const { links, missing, ambiguous } = await collectInlineHeadings(docInfos, docsByName, yieldController)
       if (isSuperseded()) return
 
       const prevDocSignatures = this.lastDocSignatures
       const prevInlineSignatures = this.lastInlineSignatures
 
+      this.removeMissingInlineChildren(missing)
+      this.updateAmbiguousInlineChildren(ambiguous)
+
       if (links.length === 0) {
         if (isSuperseded()) return
-        this.removeMissingInlineChildren(missing)
         this.lastDocSignatures.clear()
         this.lastInlineSignatures.clear()
         return
@@ -143,8 +150,6 @@ export class InlineDocumentSync {
       const initialInlineSignatures = await collectInlineSignatures(links, yieldController)
       if (isSuperseded()) return
 
-      this.removeMissingInlineChildren(missing)
-
       for (const [targetDoc, linkGroup] of linksByTarget) {
         let docSig = initialDocSignatures.get(targetDoc)
         if (docSig === undefined) continue
@@ -165,7 +170,7 @@ export class InlineDocumentSync {
         let inlineSource: InlineInfo | undefined
 
         if (docChanged) {
-          if (inlineChangedInfos.length > 0) {
+          if (inlineChangedInfos.length === 1) {
             const preferredInline = pickInlineSource(inlineChangedInfos, this.lastChangedDocument)
             if (this.lastChangedDocument && preferredInline.link.hostDoc === this.lastChangedDocument) {
               source = 'inline'
@@ -176,7 +181,7 @@ export class InlineDocumentSync {
           } else {
             source = 'doc'
           }
-        } else if (inlineChangedInfos.length > 0) {
+        } else if (inlineChangedInfos.length === 1) {
           source = 'inline'
           inlineSource = pickInlineSource(inlineChangedInfos, this.lastChangedDocument)
         } else if (inlineInfos.some((info) => info.inlineSig !== docSig || info.needsInlineIds)) {
@@ -310,12 +315,46 @@ export class InlineDocumentSync {
     })
   }
 
+  private updateAmbiguousInlineChildren(ambiguous: InlineHeading[]): void {
+    if (ambiguous.length === 0) return
+    this.withApplying(() => {
+      const outlines = new Map<Outline, InlineHeading[]>()
+      for (const entry of ambiguous) {
+        const bucket = outlines.get(entry.hostOutline)
+        if (bucket) {
+          bucket.push(entry)
+        } else {
+          outlines.set(entry.hostOutline, [entry])
+        }
+      }
+
+      for (const [outline, entries] of outlines) {
+        outline.transaction({ label: 'Inline warning' }, () => {
+          for (const entry of entries) {
+            const message = buildAmbiguousWarning(entry.target.label)
+            const children = entry.heading.children
+            if (children.length === 1 && isWarningRow(children[0], message)) {
+              continue
+            }
+            if (children.length > 0) {
+              outline.removeRows(children)
+            }
+            outline.insertRows([createWarningRowSource(message)], entry.heading)
+          }
+        })
+      }
+    })
+  }
+
   private collectDocumentInfos(): DocInfo[] {
     this.refreshDocumentCache()
     const infos: DocInfo[] = []
     for (const doc of bike.documents) {
       const outline = this.docOutlines.get(doc)
-      if (!outline) continue
+      if (!outline) {
+        console.error('Inlining: Missing outline for open document', doc.displayName)
+        continue
+      }
       infos.push({
         document: doc,
         outline,
@@ -366,13 +405,16 @@ function normalizeDocName(name: string): string {
   return name.trim().toLowerCase()
 }
 
-function indexDocumentsByName(docInfos: DocInfo[]): Map<string, DocInfo> {
-  const map = new Map<string, DocInfo>()
+function indexDocumentsByName(docInfos: DocInfo[]): Map<string, DocInfo[]> {
+  const map = new Map<string, DocInfo[]>()
   for (const info of docInfos) {
     const name = normalizeDocName(info.displayName)
     if (!name) continue
-    if (!map.has(name)) {
-      map.set(name, info)
+    const bucket = map.get(name)
+    if (bucket) {
+      bucket.push(info)
+    } else {
+      map.set(name, [info])
     }
   }
   return map
@@ -380,31 +422,40 @@ function indexDocumentsByName(docInfos: DocInfo[]): Map<string, DocInfo> {
 
 async function collectInlineHeadings(
   docInfos: DocInfo[],
-  docsByName: Map<string, DocInfo>,
+  docsByName: Map<string, DocInfo[]>,
   yieldController: YieldController
-): Promise<{ links: InlineLink[]; missing: InlineHeading[] }> {
+): Promise<{ links: InlineLink[]; missing: InlineHeading[]; ambiguous: InlineHeading[] }> {
   const links: InlineLink[] = []
   const missing: InlineHeading[] = []
+  const ambiguous: InlineHeading[] = []
 
   for (const info of docInfos) {
     let row = info.outline.root.firstChild
     while (row) {
-      const targetName = getInlineTargetName(row)
-      if (targetName) {
-        const target = docsByName.get(targetName)
-        if (target && target.document !== info.document) {
+      const target = getInlineTarget(row)
+      if (target) {
+        const candidates = docsByName.get(target.name) ?? []
+        if (candidates.length > 1) {
+          ambiguous.push({
+            heading: row,
+            hostDoc: info.document,
+            hostOutline: info.outline,
+            target
+          })
+        } else if (candidates.length === 1 && candidates[0].document !== info.document) {
+          const candidate = candidates[0]
           links.push({
             heading: row,
             hostDoc: info.document,
             hostOutline: info.outline,
-            targetDoc: target
+            targetDoc: candidate
           })
         } else {
           missing.push({
             heading: row,
             hostDoc: info.document,
             hostOutline: info.outline,
-            targetName
+            target
           })
         }
         row = nextRowAfterSubtree(row)
@@ -416,7 +467,7 @@ async function collectInlineHeadings(
     }
   }
 
-  return { links, missing }
+  return { links, missing, ambiguous }
 }
 
 function pickInlineSource(inlineChanged: InlineInfo[], lastChangedDocument?: Document): InlineInfo {
@@ -516,12 +567,28 @@ function serializeText(row: Row): string {
   return row.text.toHTML()
 }
 
-function getInlineTargetName(row: Row): string | null {
+function getInlineTarget(row: Row): InlineTarget | null {
   const trimmed = row.text.string.trim()
   const match = trimmed.match(/^<inline:\s*(.+?)\s*>$/i)
   if (!match) return null
-  const name = normalizeDocName(match[1])
-  return name ? name : null
+  const label = match[1].trim()
+  const name = normalizeDocName(label)
+  return name ? { name, label } : null
+}
+
+function buildAmbiguousWarning(label: string): string {
+  return `⚠️ Multiple documents named "${label}" are open`
+}
+
+function isWarningRow(row: Row, message: string): boolean {
+  return row.type === 'note' && row.text.string === message && row.children.length === 0
+}
+
+function createWarningRowSource(message: string): { type: string; text: string } {
+  return {
+    type: 'note',
+    text: message
+  }
 }
 
 function getInlineId(row: Row): string | undefined {
