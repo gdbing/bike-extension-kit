@@ -47,7 +47,6 @@
 - Network access is governed by `manifest.json` `host_permissions`; keep scopes minimal.
 
 ## Bike `evaluate` Notes (AppleScript)
-- Use `osascript -l JavaScript <<'EOF'` and pass `script: \`...\`` in `bike.evaluate` to avoid shell escaping issues.
-- Avoid unescaped `${...}` or stray backticks in the embedded script; they can trigger JS parse errors in `osascript`.
-- Input/output are strings only; use `JSON.stringify()` and `JSON.parse()` for structured data.
-- Prefer `var` for values that must persist across evaluate calls (per `CLAUDE.md`).
+- Prefer the project-local skill at `skills/bike-evaluate-debug/` and reuse its scripts instead of ad-hoc snippets.
+- Adjust the scripts in `skills/bike-evaluate-debug/scripts/` for new probes; they already follow the safe quoting pattern.
+- When a script writes to the outline, clean up with `delete-debug-rows.js`.
