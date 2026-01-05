@@ -47,3 +47,25 @@ in either location propagate to the other (most-recent edit wins if both change)
 
 - Unit tests live in `tests/inlining`.
 - Run `npm run test:inlining`.
+
+## Manual Smoke Test (Bike Evaluate)
+
+The script creates two temporary plaintext documents in `/tmp` and opens them
+in Bike. It records their paths in `/tmp/bike-inlining-smoke-test/state.json`.
+
+1. Setup:
+   ```
+   INLINE_MODE=setup osascript -l JavaScript skills/bike-evaluate-debug/scripts/inlining-smoke-test.js
+   ```
+2. Wait a moment for sync, then verify:
+   ```
+   INLINE_MODE=verify osascript -l JavaScript skills/bike-evaluate-debug/scripts/inlining-smoke-test.js
+   ```
+3. Verify inline-to-doc sync (edits inline copy, waits, then verifies target doc):
+   ```
+   INLINE_MODE=verify-inline-to-doc osascript -l JavaScript skills/bike-evaluate-debug/scripts/inlining-smoke-test.js
+   ```
+4. Cleanup (removes test rows, closes temp docs, deletes temp files/state):
+   ```
+   INLINE_MODE=cleanup osascript -l JavaScript skills/bike-evaluate-debug/scripts/inlining-smoke-test.js
+   ```

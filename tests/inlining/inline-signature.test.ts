@@ -40,3 +40,19 @@ test('serializeRows changes when content changes', async () => {
 
   assert.notStrictEqual(sigA, sigB)
 })
+
+test('serializeRows uses HTML text when available', async () => {
+  const outlineA = buildOutline([{ key: 'alpha', text: 'Alpha' }])
+  const outlineB = buildOutline([{ key: 'alpha', text: 'Alpha' }])
+
+  outlineA.byKey.alpha.text = { string: 'Alpha', toHTML: () => '<b>Alpha</b>' }
+  outlineB.byKey.alpha.text = { string: 'Alpha', toHTML: () => 'Alpha' }
+
+  const controller = new YieldController()
+  const rowsA = outlineA.outline.root.children as unknown as import('bike/app').Row[]
+  const rowsB = outlineB.outline.root.children as unknown as import('bike/app').Row[]
+  const sigA = await serializeRows(rowsA, { ignoreInlineId: true }, controller)
+  const sigB = await serializeRows(rowsB, { ignoreInlineId: true }, controller)
+
+  assert.notStrictEqual(sigA, sigB)
+})

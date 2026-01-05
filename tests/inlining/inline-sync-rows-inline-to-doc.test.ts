@@ -121,3 +121,83 @@ test('syncInlineToDocRows removes extra doc rows', () => {
   assert.strictEqual(doc.outline.root.children.length, 1)
   assert.strictEqual(doc.outline.root.children[0], doc.byKey.alpha)
 })
+
+test('syncInlineToDocRows syncs nested children and removes extras', () => {
+  const doc = buildOutline([
+    {
+      key: 'alpha',
+      text: 'Alpha',
+      children: [{ key: 'oldChild', text: 'Old child' }]
+    }
+  ])
+
+  const inline = buildOutline([
+    {
+      key: 'inline',
+      text: '<inline: Doc>',
+      children: [
+        {
+          key: 'inlineAlpha',
+          text: 'Alpha',
+          attributes: { [INLINE_ID_ATTR]: doc.byKey.alpha.id },
+          children: [{ key: 'newChild', text: 'New child' }]
+        }
+      ]
+    }
+  ])
+
+  const context = makeContext(doc.outline.root)
+  syncInlineToDocRows(asRows(inline.byKey.inline.children), asRow(doc.outline.root), context)
+  removeExtraChildren(asOutline(doc.outline), context.desiredChildren)
+
+  assert.strictEqual(doc.byKey.alpha.children.length, 1)
+  assert.strictEqual(doc.byKey.alpha.children[0].text.string, 'New child')
+})
+
+test('syncInlineToDocRows moves rows to new parents based on inline ids', () => {
+  const doc = buildOutline([
+    {
+      key: 'alpha',
+      text: 'Alpha',
+      children: [{ key: 'moveMe', text: 'Move me' }]
+    },
+    {
+      key: 'beta',
+      text: 'Beta'
+    }
+  ])
+
+  const inline = buildOutline([
+    {
+      key: 'inline',
+      text: '<inline: Doc>',
+      children: [
+        {
+          key: 'inlineAlpha',
+          text: 'Alpha',
+          attributes: { [INLINE_ID_ATTR]: doc.byKey.alpha.id }
+        },
+        {
+          key: 'inlineBeta',
+          text: 'Beta',
+          attributes: { [INLINE_ID_ATTR]: doc.byKey.beta.id },
+          children: [
+            {
+              key: 'inlineMoveMe',
+              text: 'Move me',
+              attributes: { [INLINE_ID_ATTR]: doc.byKey.moveMe.id }
+            }
+          ]
+        }
+      ]
+    }
+  ])
+
+  const context = makeContext(doc.outline.root)
+  syncInlineToDocRows(asRows(inline.byKey.inline.children), asRow(doc.outline.root), context)
+  removeExtraChildren(asOutline(doc.outline), context.desiredChildren)
+
+  assert.strictEqual(doc.byKey.alpha.children.length, 0)
+  assert.strictEqual(doc.byKey.beta.children.length, 1)
+  assert.strictEqual(doc.byKey.beta.children[0], doc.byKey.moveMe)
+})
