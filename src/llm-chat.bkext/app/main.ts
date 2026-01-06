@@ -1,6 +1,7 @@
-import { AppExtensionContext, CommandContext, OutlineEditor, Row } from 'bike/app'
+import { AppExtensionContext, CommandContext, OutlineEditor, Row, URL } from 'bike/app'
 import { getConfig } from './config'
-import { InlineResolver } from './inline-resolver'
+import { collectInlineReferences, getLastRow, InlineResolver } from './inline-resolver'
+import { hasUrlScheme, isFileUrl, resolveRelativeFileUrl } from './inline-path'
 import { parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { HttpError, streamCompletion } from './providers/anthropic'
@@ -10,6 +11,7 @@ import { registerStatusInspector, resetStatus, updateCacheStatus } from './statu
 
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
+let canOpenURL = false
 
 function getResponseMarkerText(
   settings: ReturnType<typeof parseConversationSettings>,
@@ -52,9 +54,14 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     showErrorsInOutline = config.ui.showErrorsInOutline
     updateMarkerAttributes(editor.outline.root)
 
+    const originDocumentFileUrl =
+      getEditorDocumentFileUrl(editor) ?? bike.frontmostDocument?.fileURL?.absoluteString ?? null
+    await openInlineDocumentsIfNeeded(editor, selection.row, originDocumentFileUrl)
+
     // Parse messages from document up to cursor
     const messages = parseMessages(editor.outline.root, selection.row, {
-      inlineResolver: createInlineResolver()
+      inlineResolver: createInlineResolver(),
+      inlineBaseUrl: originDocumentFileUrl
     })
     const settings = parseConversationSettings(editor.outline.root, selection.row)
 
@@ -127,6 +134,7 @@ function sendMessageCommand(context: CommandContext): boolean {
 
 export async function activate(context: AppExtensionContext) {
   console.log(`LLM Chat: Activated (instance ${INSTANCE_ID})`)
+  canOpenURL = context.permissions.contains('openURL')
 
   let outlineObserver: { dispose: () => void } | undefined
   let outlineTextObserver: { dispose: () => void } | undefined
@@ -185,6 +193,211 @@ export async function activate(context: AppExtensionContext) {
       'cmd-shift-l': 'llm-chat:send'
     },
     priority: 100
+  })
+}
+
+async function openInlineDocumentsIfNeeded(
+  editor: OutlineEditor,
+  stopRow: Row,
+  originDocumentFileUrl: string | null
+): Promise<void> {
+  if (!canOpenURL) return
+
+  const documentFileUrl = originDocumentFileUrl ?? getEditorDocumentFileUrl(editor)
+  const scanQueue: InlineScanTarget[] = [
+    {
+      root: editor.outline.root,
+      stopRow,
+      baseFileUrl: documentFileUrl
+    }
+  ]
+  const processedDocs = new Set<string>()
+  let didOpen = false
+
+  while (scanQueue.length > 0) {
+    const target = scanQueue.shift()
+    if (!target) break
+
+    const inlineFileUrls = collectInlineFileUrls(
+      target.root,
+      target.stopRow,
+      target.baseFileUrl
+    )
+    if (inlineFileUrls.length === 0) {
+      continue
+    }
+
+    const missingUrls = inlineFileUrls.filter((url) => !isInlineDocumentOpen(url))
+    if (missingUrls.length > 0) {
+      didOpen = true
+      for (const url of missingUrls) {
+        try {
+          new URL(url).open({ activates: false, promptsUserIfNeeded: false })
+        } catch (error) {
+          console.warn(`LLM Chat: Failed to open inline URL ${url}`, error)
+        }
+      }
+      await waitForInlineDocuments(missingUrls)
+    }
+
+    for (const url of inlineFileUrls) {
+      if (processedDocs.has(url)) continue
+      const root = getOpenDocumentRoot(url)
+      if (!root) continue
+      processedDocs.add(url)
+      const lastRow = getLastRow(root) ?? root
+      scanQueue.push({
+        root,
+        stopRow: lastRow,
+        baseFileUrl: url
+      })
+    }
+  }
+
+  if (didOpen) {
+    restoreFrontmostDocument(originDocumentFileUrl ?? documentFileUrl)
+  }
+}
+
+type InlineScanTarget = {
+  root: Row
+  stopRow: Row
+  baseFileUrl: string | null
+}
+
+function collectInlineFileUrls(root: Row, stopRow: Row, documentFileUrl: string | null): string[] {
+  const stopMarker = getStopMarker(stopRow)
+  const urls = new Set<string>()
+  let row = root.firstChild
+
+  while (row) {
+    if (row.type !== 'note') {
+      const text = row.text.string.trim().toLowerCase()
+      const markerMatch = text.match(/^<([^>]+)>$/)
+      if (markerMatch && markerMatch[1] === 'inline') {
+        const references = collectInlineReferences(row)
+        for (const reference of references) {
+          const url = extractInlineFileUrl(reference)
+          if (url) {
+            urls.add(url)
+            continue
+          }
+          if (!documentFileUrl) continue
+          const relativeUrl = resolveInlineRelativeFileUrl(reference, documentFileUrl)
+          if (relativeUrl) {
+            urls.add(relativeUrl)
+          }
+        }
+      }
+    }
+
+    if (row.id === stopMarker.id) {
+      break
+    }
+    row = row.nextSibling
+  }
+
+  return Array.from(urls)
+}
+
+function extractInlineFileUrl(reference: { text?: string; link?: string }): string | null {
+  const link = reference.link?.trim()
+  if (link && isFileUrl(link)) return link
+
+  const text = reference.text?.trim()
+  if (text && isFileUrl(text)) return text
+
+  return null
+}
+
+function resolveInlineRelativeFileUrl(
+  reference: { text?: string; link?: string },
+  baseFileUrl: string
+): string | null {
+  const candidate = (reference.link ?? reference.text)?.trim()
+  if (!candidate) return null
+  if (isFileUrl(candidate)) return candidate
+  if (hasUrlScheme(candidate)) return null
+  return resolveRelativeFileUrl(baseFileUrl, candidate)
+}
+
+function getStopMarker(stopRow: Row): Row {
+  let stopMarker = stopRow
+  while (stopMarker.level > 1 && stopMarker.parent) {
+    stopMarker = stopMarker.parent
+  }
+  return stopMarker
+}
+
+function getEditorDocumentFileUrl(editor: OutlineEditor): string | null {
+  const editorRootId = editor.outline.root.id
+  for (const doc of bike.documents) {
+    for (const window of doc.windows) {
+      const windowEditor = window.currentOutlineEditor
+      if (!windowEditor) continue
+      if (windowEditor === editor || windowEditor.outline.root.id === editorRootId) {
+        return doc.fileURL?.absoluteString ?? null
+      }
+    }
+  }
+
+  const frontmostDoc = bike.frontmostDocument
+  const frontmostEditor = bike.frontmostOutlineEditor
+  if (frontmostDoc && frontmostEditor) {
+    if (frontmostEditor === editor || frontmostEditor.outline.root.id === editorRootId) {
+      return frontmostDoc.fileURL?.absoluteString ?? null
+    }
+  }
+
+  return null
+}
+
+function restoreFrontmostDocument(fileUrl: string | null): void {
+  if (!fileUrl) return
+  try {
+    new URL(fileUrl).open({ activates: true, promptsUserIfNeeded: false })
+  } catch (error) {
+    console.warn(`LLM Chat: Failed to restore frontmost document ${fileUrl}`, error)
+  }
+}
+
+function isInlineDocumentOpen(fileUrl: string): boolean {
+  return Boolean(getOpenDocumentRoot(fileUrl))
+}
+
+function getOpenDocumentRoot(fileUrl: string): Row | null {
+  for (const doc of bike.documents) {
+    if (doc.fileURL?.absoluteString !== fileUrl) continue
+    const window = doc.frontmostWindow ?? doc.windows[0]
+    const editor = window?.currentOutlineEditor
+    if (editor) {
+      return editor.outline.root
+    }
+  }
+  return null
+}
+
+async function waitForInlineDocuments(fileUrls: string[]): Promise<void> {
+  const pending = new Set(fileUrls)
+  const timeoutMs = 1500
+  const intervalMs = 50
+  const start = Date.now()
+
+  while (pending.size > 0 && Date.now() - start < timeoutMs) {
+    for (const url of Array.from(pending)) {
+      if (isInlineDocumentOpen(url)) {
+        pending.delete(url)
+      }
+    }
+
+    if (pending.size === 0) return
+    await delay(intervalMs)
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
   })
 }
 

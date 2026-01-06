@@ -4,7 +4,7 @@
   "name": "LLM Chat",
   "version": "0.1.0",
   "api_version": "0.0.0",
-  "permissions": [],
+  "permissions": ["openURL"],
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*"

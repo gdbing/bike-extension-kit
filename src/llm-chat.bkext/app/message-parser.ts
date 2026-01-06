@@ -1,11 +1,13 @@
 import type { Row } from 'bike/app'
 import { collectInlineReferences, getLastRow, InlineResolver, resolveInlineReference } from './inline-resolver'
+import { isFileUrl } from './inline-path'
 import { Message } from './providers/types'
 import { isDescendant, nextRowAfterSubtree } from './outline-walk'
 import { attributedTextToMarkdown } from './markdown'
 
 type ParseOptions = {
   inlineResolver?: InlineResolver
+  inlineBaseUrl?: string | null
 }
 
 /**
@@ -266,7 +268,7 @@ function resolveInlineMessages(
   const messages: Message[] = []
 
   for (const reference of references) {
-    const resolved = resolveInlineReference(reference, options.inlineResolver)
+    const resolved = resolveInlineReference(reference, options.inlineResolver, options.inlineBaseUrl)
     if (!resolved) {
       const label = reference.text || reference.link || 'inline document'
       throw new Error(
@@ -280,7 +282,11 @@ function resolveInlineMessages(
 
     const stopRow = getLastRow(resolved.root)
     const nextStack = inlineStack.concat(resolved.id)
-    const inlineMessages = parseMessagesInternal(resolved.root, stopRow, options, nextStack)
+    const nextOptions: ParseOptions = {
+      ...options,
+      inlineBaseUrl: isFileUrl(resolved.id) ? resolved.id : null
+    }
+    const inlineMessages = parseMessagesInternal(resolved.root, stopRow, nextOptions, nextStack)
     messages.push(...inlineMessages)
   }
 

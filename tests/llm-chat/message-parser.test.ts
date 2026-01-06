@@ -679,6 +679,108 @@ test('falls back to visible text when link URL does not resolve', () => {
   ])
 })
 
+test('resolves relative inline paths against base url', () => {
+  const inlineDoc = buildOutline([
+    {
+      text: '<assistant>',
+      children: [{ text: 'From child', key: 'child-line' }]
+    }
+  ])
+
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Hi', key: 'hi' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'sub/child.bike' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'After inline', key: 'after-inline' }]
+    }
+  ])
+
+  const stopRow = byKey['after-inline']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any, {
+    inlineResolver: makeInlineResolver(
+      { 'file:///root/sub/child.bike': inlineDoc },
+      {}
+    ),
+    inlineBaseUrl: 'file:///root/main.bike'
+  })
+
+  assert.deepEqual(messages, [
+    { role: 'user', content: 'Hi\n' },
+    { role: 'assistant', content: 'From child\n' },
+    { role: 'assistant', content: 'After inline\n' }
+  ])
+})
+
+test('resolves nested inline paths relative to inlined document', () => {
+  const sharedDoc = buildOutline([
+    {
+      text: '<assistant>',
+      children: [{ text: 'Shared content', key: 'shared' }]
+    }
+  ])
+
+  const childDoc = buildOutline([
+    {
+      text: '<assistant>',
+      children: [{ text: 'Child intro', key: 'child-intro' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: '../shared.bike' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'Child outro', key: 'child-outro' }]
+    }
+  ])
+
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Main', key: 'main' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'sub/child.bike' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'After inline', key: 'after-inline' }]
+    }
+  ])
+
+  const stopRow = byKey['after-inline']
+  if (!stopRow) throw new Error('Missing test row')
+
+  const messages = parseMessages(root as any, stopRow as any, {
+    inlineResolver: makeInlineResolver(
+      {
+        'file:///root/sub/child.bike': childDoc,
+        'file:///root/shared.bike': sharedDoc
+      },
+      {}
+    ),
+    inlineBaseUrl: 'file:///root/main.bike'
+  })
+
+  assert.deepEqual(messages, [
+    { role: 'user', content: 'Main\n' },
+    { role: 'assistant', content: 'Child intro\n' },
+    { role: 'assistant', content: 'Shared content\n' },
+    { role: 'assistant', content: 'Child outro\n' },
+    { role: 'assistant', content: 'After inline\n' }
+  ])
+})
+
 test('throws when inline document is not open', () => {
   const { root, byKey } = buildOutline([
     {
@@ -705,6 +807,37 @@ test('throws when inline document is not open', () => {
       }),
     {
       message: 'Unable to find Missing Doc. Inlined documents must be open in Bike.'
+    }
+  )
+})
+
+test('throws when relative inline path has no base url', () => {
+  const { root, byKey } = buildOutline([
+    {
+      text: '<user>',
+      children: [{ text: 'Hi', key: 'hi' }]
+    },
+    {
+      text: '<inline>',
+      children: [{ text: 'sub/child.bike' }]
+    },
+    {
+      text: '<assistant>',
+      children: [{ text: 'After inline', key: 'after-inline' }]
+    }
+  ])
+
+  const stopRow = byKey['after-inline']
+  if (!stopRow) throw new Error('Missing test row')
+
+  assert.throws(
+    () =>
+      parseMessages(root as any, stopRow as any, {
+        inlineResolver: makeInlineResolver({}, {}),
+        inlineBaseUrl: null
+      }),
+    {
+      message: 'Unable to find sub/child.bike. Inlined documents must be open in Bike.'
     }
   )
 })

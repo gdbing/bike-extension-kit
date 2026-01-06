@@ -99,7 +99,7 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 - Rich text attributes are converted to inline Markdown (`*italic*`, `**bold**`, `` `code` ``, `~~strikethrough~~`, `[links](url)`); highlights are ignored.
 - Parsing stops after the marker that contains the cursor row.
 - Tags are indented `<name>` rows inside a message; they emit open/close tags and de-indent their contents.
-- `<inline>` markers are root-level rows whose children list file URLs (or document display names). Each target document must be open in Bike; its messages are parsed and inserted at the marker position. Inline resolution follows link attributes first, then visible text, and cycles are errors.
+- `<inline>` markers are root-level rows whose children list file URLs (or document display names). If a file URL or relative filename is provided, LLM Chat attempts to open it (requires `openURL` permission) before parsing; relative filenames resolve against the current document's folder, and nested inlines resolve relative to their own documents. Inline resolution follows link attributes first, then visible text, and cycles are errors.
 
 ### Outline Config Markers
 

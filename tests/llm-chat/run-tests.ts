@@ -22,6 +22,7 @@ async function main(): Promise<void> {
   seedConfigForTests()
 
   await import('./config.test')
+  await import('./inline-path.test')
   await import('./message-parser.test')
   await import('./response-inserter.test')
   await import('./settings-parser.test')

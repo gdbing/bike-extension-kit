@@ -1,4 +1,5 @@
 import type { Row } from 'bike/app'
+import { hasUrlScheme, isFileUrl, resolveRelativeFileUrl } from './inline-path'
 import { isDescendant, nextRowAfterSubtree } from './outline-walk'
 
 export type InlineResolver = {
@@ -35,19 +36,16 @@ export function collectInlineReferences(markerRow: Row): InlineReference[] {
 
 export function resolveInlineReference(
   reference: InlineReference,
-  resolver: InlineResolver
+  resolver: InlineResolver,
+  baseFileUrl?: string | null
 ): { root: Row; id: string } | null {
-  if (reference.link) {
-    const byLink = resolver.resolveByURL(reference.link)
-    if (byLink) return byLink
+  const fileUrlCandidates = getFileUrlCandidates(reference, baseFileUrl ?? null)
+  for (const url of fileUrlCandidates) {
+    const byUrl = resolver.resolveByURL(url)
+    if (byUrl) return byUrl
   }
 
   if (!reference.text) return null
-
-  if (reference.text.startsWith('file:///')) {
-    return resolver.resolveByURL(reference.text)
-  }
-
   return resolver.resolveByDisplayName(reference.text)
 }
 
@@ -60,6 +58,31 @@ export function getLastRow(root: Row): Row | undefined {
     current = current.nextInOutline
   }
   return current
+}
+
+function getFileUrlCandidates(reference: InlineReference, baseFileUrl: string | null): string[] {
+  const candidates: string[] = []
+  const seen = new Set<string>()
+
+  const consider = (value?: string) => {
+    if (!value) return
+    const trimmed = value.trim()
+    if (!trimmed) return
+    let resolved: string | null = null
+    if (isFileUrl(trimmed)) {
+      resolved = trimmed
+    } else if (!hasUrlScheme(trimmed) && baseFileUrl) {
+      resolved = resolveRelativeFileUrl(baseFileUrl, trimmed)
+    }
+    if (!resolved || seen.has(resolved)) return
+    seen.add(resolved)
+    candidates.push(resolved)
+  }
+
+  consider(reference.link)
+  consider(reference.text)
+
+  return candidates
 }
 
 function getFirstLinkURL(text: { string: string; attributeAt?: (name: string, index: number) => string | null }): string | null {
