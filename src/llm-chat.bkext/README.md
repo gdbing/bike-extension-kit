@@ -48,7 +48,7 @@ The server runs on `http://localhost:3033`. Keep it running while using the exte
 
 ## Configuration
 
-Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing or unsupported. The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host_permissions`. Marker colors are configured under `ui.markerColors`.
+Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, the default system message, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing or unsupported. The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host_permissions`. Marker colors are configured under `ui.markerColors`.
 
 The extension also provides an editor style named "LLM Chat" (Bike > Window > Style Sheets) to show marker colors and code styling.
 Marker colors refresh automatically as marker rows are edited or moved.

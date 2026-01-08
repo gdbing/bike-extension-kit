@@ -8,6 +8,7 @@ import { HttpError, streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
 import { updateMarkerAttributes } from './marker-attributes'
 import { registerStatusInspector, resetStatus, updateCacheStatus } from './status-inspector'
+import { applyDefaultSystemMessage } from './system-message'
 
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
@@ -59,7 +60,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     await openInlineDocumentsIfNeeded(editor, selection.row, originDocumentFileUrl)
 
     // Parse messages from document up to cursor
-    const messages = parseMessages(editor.outline.root, selection.row, {
+    let messages = parseMessages(editor.outline.root, selection.row, {
       inlineResolver: createInlineResolver(),
       inlineBaseUrl: originDocumentFileUrl
     })
@@ -77,6 +78,8 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
       showInlineError('No messages found. Add <user> or <system> markers.')
       return
     }
+
+    messages = applyDefaultSystemMessage(messages, config.defaultSystemMessage)
 
     // Check we have at least one user message
     const hasUserMessage = messages.some(m => m.role === 'user')

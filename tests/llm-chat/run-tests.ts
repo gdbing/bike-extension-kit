@@ -26,6 +26,7 @@ async function main(): Promise<void> {
   await import('./message-parser.test')
   await import('./response-inserter.test')
   await import('./settings-parser.test')
+  await import('./system-message.test')
 
   await runTests()
 }

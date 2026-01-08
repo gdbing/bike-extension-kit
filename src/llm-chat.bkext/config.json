@@ -9,16 +9,20 @@
     "model": "claude-haiku-4-5",
     "maxTokens": 4096
   },
+  "defaultSystemMessage": "You are a helpful assistant.\nKeep replies concise and useful.",
   "models": [
     { "name": "claude-haiku-4-5", "provider": "anthropic" },
     { "name": "claude-sonnet-4-5", "provider": "anthropic" },
     { "name": "claude-opus-4-5", "provider": "anthropic" },
     { "name": "gpt-5.2", "provider": "openai" },
     { "name": "gpt-5-mini", "provider": "openai" },
+    { "name": "moonshotai/kimi-k2-0905", "provider": "openrouter" },
     { "name": "deepseek/deepseek-chat", "provider": "openrouter" },
+    { "name": "nousresearch/hermes-4-405b", "provider": "openrouter" },
     { "name": "x-ai/grok-4.1-fast", "provider": "openrouter" },
     { "name": "google/gemini-3-pro-preview", "provider": "openrouter" },
-    { "name": "google/gemini-3-flash-preview", "provider": "openrouter" }
+    { "name": "google/gemini-3-flash-preview", "provider": "openrouter" },
+    { "name": "mistralai/mistral-small-creative", "provider": "openrouter" }
   ],
   "ui": {
     "showErrorsInOutline": true,

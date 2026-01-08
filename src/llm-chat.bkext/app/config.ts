@@ -18,6 +18,7 @@ export interface ExtensionConfig {
     model: string
     maxTokens: number
   }
+  defaultSystemMessage?: string
   models: ModelDefinition[]
   ui: {
     showErrorsInOutline: boolean
@@ -49,6 +50,10 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string'
 }
 
 function assertConfig(value: PartialConfig): asserts value is ExtensionConfig {
@@ -83,6 +88,10 @@ function assertConfig(value: PartialConfig): asserts value is ExtensionConfig {
     if (!isNumber(value.requestDefaults.maxTokens)) {
       errors.push('requestDefaults.maxTokens must be a number')
     }
+  }
+
+  if (value.defaultSystemMessage !== undefined && !isString(value.defaultSystemMessage)) {
+    errors.push('defaultSystemMessage must be a string')
   }
 
   if (!Array.isArray(value.models) || value.models.length === 0) {
