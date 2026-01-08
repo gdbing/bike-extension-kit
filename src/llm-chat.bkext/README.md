@@ -44,11 +44,12 @@ cd src/llm-chat.bkext/proxy
 python3 server.py
 ```
 
-The server runs on `http://localhost:3033`. Keep it running while using the extension.
+The server runs on the host/port defined in `src/llm-chat.bkext/config.json` (default `http://127.0.0.1:3033`).
+Keep it running while using the extension.
 
 ## Configuration
 
-Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, the default system message, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing or unsupported. The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host_permissions`. Marker colors are configured under `ui.markerColors`.
+Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, the default system message, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing or unsupported. The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host_permissions`. Marker colors are configured under `ui.markerColors`. `ui.showErrorsInOutline` controls whether errors are inserted as `<error>` blocks. The default system message is only applied when no `<system>` marker appears before the cursor.
 
 The extension also provides an editor style named "LLM Chat" (Bike > Window > Style Sheets) to show marker colors and code styling.
 Marker colors refresh automatically as marker rows are edited or moved.
@@ -64,6 +65,7 @@ Marker colors refresh automatically as marker rows are edited or moved.
 2. Nest your content under the markers (indented)
 
 3. Press `Shift+Cmd+L` to send (or run **LLM Chat: Send** from the command palette)
+   - Tip: `Cmd+U` runs **LLM Chat: Insert User** to wrap the current selection in a `<user>` marker.
 
 The response will stream in under a model heading (for example, `<sonnet>` if `<model>` is set to `sonnet`, or the exact model name when using defaults/config).
 
