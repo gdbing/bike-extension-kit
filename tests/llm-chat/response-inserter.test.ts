@@ -74,7 +74,7 @@ async function* makeTokenStream(text: string): AsyncGenerator<string, void, unkn
   yield text
 }
 
-test('streaming responses always create new marker rows', async () => {
+test('streaming responses insert newest output directly after the marker', async () => {
   const userRow = createRow('<user>')
   const outline = new FakeOutline([userRow])
 

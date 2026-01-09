@@ -1,9 +1,8 @@
 import * as assert from 'node:assert/strict'
-import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { test } from './test-harness'
 
-function getTestConfigPath(): string {
+function getConfigJsonPath(): string {
   return resolve(__dirname, '../../src/llm-chat.bkext/config.json')
 }
 
@@ -11,22 +10,37 @@ function getTestManifestPath(): string {
   return resolve(__dirname, '../../src/llm-chat.bkext/manifest.json')
 }
 
-function getTestConfigJsonPath(): string {
-  return resolve(__dirname, '../../src/llm-chat.bkext/config.json')
-}
-
 function getConfigModulePath(): string {
   return resolve(__dirname, '../../src/llm-chat.bkext/app/config.js')
 }
 
+function stubModule(path: string, exports: unknown): NodeModule | undefined {
+  const previous = require.cache[path]
+  require.cache[path] = {
+    id: path,
+    filename: path,
+    loaded: true,
+    exports
+  } as NodeModule
+  return previous
+}
+
+function restoreModule(path: string, previous?: NodeModule): void {
+  if (previous) {
+    require.cache[path] = previous
+  } else {
+    delete require.cache[path]
+  }
+}
+
 test('getConfig rejects server hosts not allowed by manifest', () => {
-  const configPath = getTestConfigPath()
+  const configPath = getConfigJsonPath()
   const manifestPath = getTestManifestPath()
-  const configJsonPath = getTestConfigJsonPath()
   const configModulePath = getConfigModulePath()
 
-  const originalConfig = readFileSync(configPath, 'utf-8')
-  const originalManifest = readFileSync(manifestPath, 'utf-8')
+  const originalConfig = require.cache[configPath]
+  const originalManifest = require.cache[manifestPath]
+  const originalConfigModule = require.cache[configModulePath]
 
   try {
     const updatedConfig = {
@@ -48,15 +62,9 @@ test('getConfig rejects server hosts not allowed by manifest', () => {
       }
     }
 
-    writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2))
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({ host_permissions: [] }, null, 2)
-    )
-
+    stubModule(configPath, updatedConfig)
+    stubModule(manifestPath, { host_permissions: [] })
     delete require.cache[configModulePath]
-    delete require.cache[manifestPath]
-    delete require.cache[configJsonPath]
     const { getConfig } = require(configModulePath) as typeof import('../../src/llm-chat.bkext/app/config')
 
     assert.throws(
@@ -64,8 +72,8 @@ test('getConfig rejects server hosts not allowed by manifest', () => {
       /not allowed by manifest host_permissions/
     )
   } finally {
-    writeFileSync(configPath, originalConfig)
-    writeFileSync(manifestPath, originalManifest)
-    delete require.cache[configModulePath]
+    restoreModule(configPath, originalConfig)
+    restoreModule(manifestPath, originalManifest)
+    restoreModule(configModulePath, originalConfigModule)
   }
 })
