@@ -26,6 +26,7 @@ export type ChatCommandDependencies = {
     stopRow: Row,
     originDocumentFileUrl: string | null
   ) => Promise<void>
+  getInlineResolver?: () => InlineResolver
   parseMessages: (root: Row, stopRow: Row, options: ParseMessagesOptions) => Message[]
   parseConversationSettings: (root: Row, stopRow: Row) => ConversationSettings
   applyDefaultSystemMessage: (messages: Message[], defaultSystemMessage?: string) => Message[]
@@ -70,7 +71,8 @@ export async function runChatCommand(
   context: ChatCommandContext,
   deps: ChatCommandDependencies
 ): Promise<void> {
-  const { editor, selection, originDocumentFileUrl, statusWindow, inlineResolver } = context
+  const { editor, selection, originDocumentFileUrl, statusWindow } = context
+  let inlineResolver = context.inlineResolver
 
   let showErrorsInOutline = true
   const showInlineError = (message: string) => {
@@ -87,6 +89,9 @@ export async function runChatCommand(
     deps.updateMarkerAttributes(editor.outline.root)
 
     await deps.openInlineDocumentsIfNeeded(editor, selection.row, originDocumentFileUrl)
+    if (deps.getInlineResolver) {
+      inlineResolver = deps.getInlineResolver()
+    }
 
     let messages = deps.parseMessages(editor.outline.root, selection.row, {
       inlineResolver,

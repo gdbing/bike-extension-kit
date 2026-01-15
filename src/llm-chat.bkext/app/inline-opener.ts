@@ -159,8 +159,8 @@ async function defaultWaitForInlineDocuments(
   isInlineDocumentOpen: (fileUrl: string) => boolean
 ): Promise<void> {
   const pending = new Set(fileUrls)
-  const timeoutMs = 1500
-  const intervalMs = 50
+  const timeoutMs = 2000
+  const intervalMs = 100
   const start = Date.now()
 
   while (pending.size > 0 && Date.now() - start < timeoutMs) {

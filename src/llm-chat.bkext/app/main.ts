@@ -47,6 +47,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
         getEditorDocumentFileUrl,
         restoreFrontmostDocument
       }),
+    getInlineResolver: () => createInlineResolver(),
     parseMessages,
     parseConversationSettings,
     applyDefaultSystemMessage,
