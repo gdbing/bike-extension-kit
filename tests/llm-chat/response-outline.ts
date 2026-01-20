@@ -80,6 +80,33 @@ export class FakeOutline {
     return newRows
   }
 
+  moveRows(rows: FakeRow[], parent: FakeRow = this.root, before?: FakeRow): void {
+    const parents = new Set<FakeRow>()
+
+    for (const row of rows) {
+      const currentParent = row.parent
+      if (!currentParent) continue
+      currentParent.children = currentParent.children.filter(child => child !== row)
+      parents.add(currentParent)
+    }
+
+    const insertParent = parent
+    let insertIndex = before ? insertParent.children.indexOf(before) : insertParent.children.length
+    if (insertIndex < 0) insertIndex = insertParent.children.length
+
+    for (const row of rows) {
+      row.parent = insertParent
+      row.level = insertParent.level + 1
+      insertParent.children.splice(insertIndex, 0, row)
+      insertIndex += 1
+    }
+
+    parents.add(insertParent)
+    for (const target of parents) {
+      this.relinkSiblings(target)
+    }
+  }
+
   removeRows(rows: FakeRow[]): void {
     for (const row of rows) {
       const parent = row.parent
@@ -126,7 +153,10 @@ export function createRow(
   const fakeText: FakeText = {
     string: text,
     replace(_range, value) {
-      fakeText.string = value
+      const range = _range ?? [0, fakeText.string.length]
+      const start = Math.max(0, Math.min(range[0], fakeText.string.length))
+      const end = Math.max(start, Math.min(range[1], fakeText.string.length))
+      fakeText.string = fakeText.string.slice(0, start) + value + fakeText.string.slice(end)
       attributeRuns.length = 0
     },
     attributeAt(name, index) {

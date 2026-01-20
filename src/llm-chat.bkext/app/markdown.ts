@@ -7,6 +7,11 @@ export type TextAttributeRun = {
   value?: string
 }
 
+export type TextDeleteRange = {
+  start: number
+  end: number
+}
+
 export type ParsedMarkdownRow = {
   text: string
   type?: RowType
@@ -111,6 +116,80 @@ export function attributedTextToMarkdown(text: AttributedString): string {
   return output
 }
 
+export function parseMarkdownLineTokens(line: string): {
+  text: string
+  type?: RowType
+  attributes?: Record<string, string>
+  runs?: TextAttributeRun[]
+  deleteRanges: TextDeleteRange[]
+} {
+  if (line.startsWith('# ') && !line.startsWith('##')) {
+    const content = line.slice(2)
+    const parsed = parseInlineMarkdownTokens(content)
+    return {
+      text: parsed.text,
+      type: 'heading',
+      runs: parsed.runs,
+      deleteRanges: mergeDeleteRanges(parsed.deleteRanges, 2)
+    }
+  }
+
+  const taskPrefix = parseTaskPrefix(line)
+  if (taskPrefix) {
+    const parsed = parseInlineMarkdownTokens(taskPrefix.text)
+    return {
+      text: parsed.text,
+      type: 'task',
+      attributes: taskPrefix.checked ? { done: new Date().toISOString() } : undefined,
+      runs: parsed.runs,
+      deleteRanges: mergeDeleteRanges(parsed.deleteRanges, taskPrefix.prefixLength)
+    }
+  }
+
+  const orderedMatch = line.match(/^(\d+)\.\s+/)
+  if (orderedMatch) {
+    const content = line.slice(orderedMatch[0].length)
+    const parsed = parseInlineMarkdownTokens(content)
+    return {
+      text: parsed.text,
+      type: 'ordered',
+      runs: parsed.runs,
+      deleteRanges: mergeDeleteRanges(parsed.deleteRanges, orderedMatch[0].length)
+    }
+  }
+
+  const unorderedMatch = line.match(/^(?:-|\*|\u2022)\s+/)
+  if (unorderedMatch) {
+    const content = line.slice(unorderedMatch[0].length)
+    const parsed = parseInlineMarkdownTokens(content)
+    return {
+      text: parsed.text,
+      type: 'unordered',
+      runs: parsed.runs,
+      deleteRanges: mergeDeleteRanges(parsed.deleteRanges, unorderedMatch[0].length)
+    }
+  }
+
+  const quoteMatch = line.match(/^>\s?/)
+  if (quoteMatch) {
+    const content = line.slice(quoteMatch[0].length)
+    const parsed = parseInlineMarkdownTokens(content)
+    return {
+      text: parsed.text,
+      type: 'quote',
+      runs: parsed.runs,
+      deleteRanges: mergeDeleteRanges(parsed.deleteRanges, quoteMatch[0].length)
+    }
+  }
+
+  const parsed = parseInlineMarkdownTokens(line)
+  return {
+    text: parsed.text,
+    runs: parsed.runs,
+    deleteRanges: parsed.deleteRanges
+  }
+}
+
 export function parseMarkdownToRows(markdown: string): ParsedMarkdownRow[] {
   const normalized = markdown.replace(/\r\n/g, '\n')
   const lines = normalized.split('\n')
@@ -211,62 +290,48 @@ export function parseMarkdownLine(line: string): {
   attributes?: Record<string, string>
   runs?: TextAttributeRun[]
 } {
-  if (line.startsWith('# ') && !line.startsWith('##')) {
-    const content = line.slice(2)
-    const parsed = parseInlineMarkdown(content)
-    return { text: parsed.text, type: 'heading', runs: parsed.runs }
+  const parsed = parseMarkdownLineTokens(line)
+  return {
+    text: parsed.text,
+    type: parsed.type,
+    attributes: parsed.attributes,
+    runs: parsed.runs
   }
-
-  const taskPrefix = parseTaskPrefix(line)
-  if (taskPrefix) {
-    const parsed = parseInlineMarkdown(taskPrefix.text)
-    return {
-      text: parsed.text,
-      type: 'task',
-      attributes: taskPrefix.checked ? { done: new Date().toISOString() } : undefined,
-      runs: parsed.runs
-    }
-  }
-
-  const orderedMatch = line.match(/^(\d+)\.\s+/)
-  if (orderedMatch) {
-    const content = line.slice(orderedMatch[0].length)
-    const parsed = parseInlineMarkdown(content)
-    return { text: parsed.text, type: 'ordered', runs: parsed.runs }
-  }
-
-  const unorderedMatch = line.match(/^(?:-|\*|\u2022)\s+/)
-  if (unorderedMatch) {
-    const content = line.slice(unorderedMatch[0].length)
-    const parsed = parseInlineMarkdown(content)
-    return { text: parsed.text, type: 'unordered', runs: parsed.runs }
-  }
-
-  if (line.startsWith('>')) {
-    const content = line.replace(/^>\s?/, '')
-    const parsed = parseInlineMarkdown(content)
-    return { text: parsed.text, type: 'quote', runs: parsed.runs }
-  }
-
-  const parsed = parseInlineMarkdown(line)
-  return { text: parsed.text, runs: parsed.runs }
 }
 
-function parseTaskPrefix(line: string): { checked: boolean; text: string } | null {
+function parseTaskPrefix(line: string): { checked: boolean; text: string; prefixLength: number } | null {
   const bullet = line.match(/^(?:-|\*|\u2022)\s+\[( |x|X)\]\s+/)
   if (bullet) {
-    return { checked: bullet[1].toLowerCase() === 'x', text: line.slice(bullet[0].length) }
+    return {
+      checked: bullet[1].toLowerCase() === 'x',
+      text: line.slice(bullet[0].length),
+      prefixLength: bullet[0].length
+    }
   }
   const plain = line.match(/^\[( |x|X)\]\s+/)
   if (plain) {
-    return { checked: plain[1].toLowerCase() === 'x', text: line.slice(plain[0].length) }
+    return {
+      checked: plain[1].toLowerCase() === 'x',
+      text: line.slice(plain[0].length),
+      prefixLength: plain[0].length
+    }
   }
   return null
 }
 
 export function parseInlineMarkdown(input: string): { text: string; runs: TextAttributeRun[] } {
+  const parsed = parseInlineMarkdownTokens(input)
+  return { text: parsed.text, runs: parsed.runs }
+}
+
+export function parseInlineMarkdownTokens(input: string): {
+  text: string
+  runs: TextAttributeRun[]
+  deleteRanges: TextDeleteRange[]
+} {
   let output = ''
   const runs: TextAttributeRun[] = []
+  const deleteRanges: TextDeleteRange[] = []
   const active: Record<string, number | null> = {
     strong: null,
     em: null,
@@ -282,6 +347,7 @@ export function parseInlineMarkdown(input: string): { text: string; runs: TextAt
   while (index < input.length) {
     if (active.code !== null) {
       if (input[index] === '`') {
+        deleteRanges.push({ start: index, end: index + 1 })
         const start = active.code
         active.code = null
         if (start !== null) {
@@ -296,24 +362,28 @@ export function parseInlineMarkdown(input: string): { text: string; runs: TextAt
     }
 
     if (input.startsWith('**', index) && (active.strong !== null || hasClosing('**', index + 2))) {
+      deleteRanges.push({ start: index, end: index + 2 })
       toggleInline(active, runs, 'strong', output.length)
       index += 2
       continue
     }
 
     if (input[index] === '*' && (active.em !== null || hasClosing('*', index + 1))) {
+      deleteRanges.push({ start: index, end: index + 1 })
       toggleInline(active, runs, 'em', output.length)
       index += 1
       continue
     }
 
     if (input.startsWith('~~', index) && (active.s !== null || hasClosing('~~', index + 2))) {
+      deleteRanges.push({ start: index, end: index + 2 })
       toggleInline(active, runs, 's', output.length)
       index += 2
       continue
     }
 
     if (input[index] === '`' && (active.code !== null || hasClosing('`', index + 1))) {
+      deleteRanges.push({ start: index, end: index + 1 })
       toggleInline(active, runs, 'code', output.length)
       index += 1
       continue
@@ -326,7 +396,7 @@ export function parseInlineMarkdown(input: string): { text: string; runs: TextAt
       if (closeBracket !== -1 && openParen === closeBracket + 1 && closeParen !== -1) {
         const linkText = input.slice(index + 1, closeBracket)
         const url = input.slice(openParen + 1, closeParen)
-        const parsed = parseInlineMarkdown(linkText)
+        const parsed = parseInlineMarkdownTokens(linkText)
         const start = output.length
         output += parsed.text
         const end = output.length
@@ -340,9 +410,20 @@ export function parseInlineMarkdown(input: string): { text: string; runs: TextAt
             })
           }
         }
+        for (const range of parsed.deleteRanges) {
+          deleteRanges.push({
+            start: index + 1 + range.start,
+            end: index + 1 + range.end
+          })
+        }
         if (end > start) {
           runs.push({ start, end, name: 'a', value: url })
         }
+        deleteRanges.push({ start: index, end: index + 1 })
+        deleteRanges.push({ start: closeBracket, end: closeBracket + 1 })
+        deleteRanges.push({ start: openParen, end: openParen + 1 })
+        deleteRanges.push({ start: openParen + 1, end: closeParen })
+        deleteRanges.push({ start: closeParen, end: closeParen + 1 })
         index = closeParen + 1
         continue
       }
@@ -353,7 +434,7 @@ export function parseInlineMarkdown(input: string): { text: string; runs: TextAt
   }
 
   closeRemaining(active, runs, output.length)
-  return { text: output, runs }
+  return { text: output, runs, deleteRanges }
 }
 
 function toggleInline(
@@ -392,4 +473,13 @@ function statesEqual(a: InlineState, b: InlineState): boolean {
     a.strike === b.strike &&
     a.link === b.link
   )
+}
+
+function mergeDeleteRanges(ranges: TextDeleteRange[], offset: number): TextDeleteRange[] {
+  const merged = ranges.map(range => ({
+    start: range.start + offset,
+    end: range.end + offset
+  }))
+  merged.push({ start: 0, end: offset })
+  return merged
 }

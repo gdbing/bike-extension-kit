@@ -1,6 +1,6 @@
 import { Outline, Row } from 'bike/app'
 import { setMarkerAttribute } from './marker-attributes'
-import { parseMarkdownToRows, ParsedMarkdownRow, TextAttributeRun } from './markdown'
+import { parseMarkdownLineTokens, parseMarkdownToRows, ParsedMarkdownRow, TextAttributeRun, TextDeleteRange } from './markdown'
 
 /**
  * Create a new marker row after the given row.
@@ -61,43 +61,34 @@ export async function streamResponseToOutline(
   const assistantRow = prepareMarkerRow(outline, afterRow, markerText)
 
   // Create initial content row
-  let currentRow = outline.insertRows(
-    [{ text: '' }],
-    assistantRow
-  )[0]
+  let currentRow = outline.insertRows([{ text: '' }], assistantRow)[0]
+
+  const state: StreamParseState = {
+    indentUnit: null,
+    rowStack: [],
+    inCodeFence: false
+  }
 
   let buffer = ''
   let currentRowContent = ''
-  const completedLines: string[] = []
-
-  const renderCompletedLines = () => {
-    if (completedLines.length === 0) return
-    const rawText = completedLines.join('\n')
-    replaceRowsWithMarkdown(outline, assistantRow, rawText)
-    currentRow = outline.insertRows(
-      [{ text: currentRowContent }],
-      assistantRow
-    )[0]
-  }
 
   for await (const token of tokenGenerator) {
     buffer += token
 
     // Split on newlines
-    let completedLine = false
     while (buffer.includes('\n')) {
       const newlineIndex = buffer.indexOf('\n')
-      const lineContent = buffer.slice(0, newlineIndex)
+      let lineContent = buffer.slice(0, newlineIndex)
       buffer = buffer.slice(newlineIndex + 1)
 
-      const finalContent = currentRowContent + lineContent
-      completedLines.push(finalContent)
-      currentRowContent = ''
-      completedLine = true
-    }
+      if (lineContent.endsWith('\r')) {
+        lineContent = lineContent.slice(0, -1)
+      }
 
-    if (completedLine) {
-      renderCompletedLines()
+      const finalContent = currentRowContent + lineContent
+      currentRowContent = ''
+      finalizeLine(outline, assistantRow, currentRow, finalContent, state)
+      currentRow = outline.insertRows([{ text: '' }], assistantRow)[0]
     }
 
     // Update current row with remaining buffer (no newline yet)
@@ -110,11 +101,135 @@ export async function streamResponseToOutline(
     }
   }
 
-  const finalLines = currentRowContent
-    ? completedLines.concat(currentRowContent)
-    : completedLines
-  const rawText = finalLines.join('\n')
-  replaceRowsWithMarkdown(outline, assistantRow, rawText)
+  if (currentRowContent.endsWith('\r')) {
+    currentRowContent = currentRowContent.slice(0, -1)
+  }
+  finalizeLine(outline, assistantRow, currentRow, currentRowContent, state)
+}
+
+type StreamParseState = {
+  indentUnit: string | null
+  rowStack: Row[]
+  inCodeFence: boolean
+}
+
+function finalizeLine(
+  outline: Outline,
+  assistantRow: Row,
+  row: Row,
+  rawLine: string,
+  state: StreamParseState
+): void {
+  const { indent, content, indentLength } = splitIndent(rawLine, state)
+  const trimmed = content.trim()
+
+  outline.transaction({ animate: 'none' }, () => {
+    if (row.text.string !== rawLine) {
+      row.text.replace([0, row.text.string.length], rawLine)
+    }
+
+    if (indentLength > 0) {
+      row.text.replace([0, indentLength], '')
+    }
+
+    if (trimmed.startsWith('```')) {
+      outline.removeRows([row])
+      state.inCodeFence = !state.inCodeFence
+      return
+    }
+
+    placeRowByIndent(outline, assistantRow, row, indent, state.rowStack)
+
+    if (state.inCodeFence) {
+      row.type = 'code'
+      return
+    }
+
+    const parsed = parseMarkdownLineTokens(content)
+    applyDeleteRanges(row.text, parsed.deleteRanges)
+    applyRowType(row, parsed.type)
+    applyRowAttributes(row, parsed.attributes)
+    if (parsed.runs?.length) {
+      applyTextRuns(row.text, parsed.runs)
+    }
+  })
+}
+
+function splitIndent(
+  line: string,
+  state: StreamParseState
+): { indent: number; content: string; indentLength: number } {
+  if (!state.indentUnit) {
+    const match = line.match(/^[\t ]+/)
+    if (match) {
+      state.indentUnit = match[0]
+    }
+  }
+
+  let indent = 0
+  let content = line
+  const indentUnit = state.indentUnit
+
+  if (indentUnit) {
+    while (content.startsWith(indentUnit)) {
+      indent += 1
+      content = content.slice(indentUnit.length)
+    }
+    if (!indentUnit.includes('\t')) {
+      while (content.startsWith('\t')) {
+        indent += 1
+        content = content.slice(1)
+      }
+    }
+  }
+
+  return { indent, content, indentLength: line.length - content.length }
+}
+
+function placeRowByIndent(
+  outline: Outline,
+  assistantRow: Row,
+  row: Row,
+  indent: number,
+  stack: Row[]
+): void {
+  if (indent <= 0) {
+    outline.moveRows([row], assistantRow)
+    stack.length = 0
+    stack[0] = row
+    return
+  }
+
+  const clampedIndent = Math.min(indent, stack.length)
+  const parent = stack[clampedIndent - 1] ?? assistantRow
+  outline.moveRows([row], parent)
+  stack.length = clampedIndent
+  stack[clampedIndent] = row
+}
+
+function applyRowType(row: Row, type?: Row['type']): void {
+  if (type) {
+    row.type = type
+  }
+}
+
+function applyRowAttributes(row: Row, attributes?: Record<string, string>): void {
+  if (!attributes) return
+  for (const [key, value] of Object.entries(attributes)) {
+    row.setAttribute(key, value)
+  }
+}
+
+function applyDeleteRanges(text: Row['text'], ranges: TextDeleteRange[]): void {
+  if (!ranges.length) return
+  const ordered = [...ranges].sort((a, b) => {
+    if (a.start === b.start) return b.end - a.end
+    return b.start - a.start
+  })
+  for (const range of ordered) {
+    if (range.end <= range.start) continue
+    text.replace([range.start, range.end], '')
+  }
 }
 
 function replaceRowsWithMarkdown(outline: Outline, parent: Row, markdown: string): void {

@@ -90,6 +90,27 @@ test('streaming responses insert newest output directly after the marker', async
   assert.equal(rootChildren[2].children[0].text.string, 'First reply')
 })
 
+test('streamResponseToOutline preserves completed rows when new lines stream in', async () => {
+  const userRow = createRow('<user>')
+  const outline = new FakeOutline([userRow])
+  let firstLineRow: FakeRow | null = null
+
+  async function* tokenStream(): AsyncGenerator<string, void, unknown> {
+    yield 'First line\n'
+    const assistantRow = outline.root.children[1]
+    firstLineRow = assistantRow.children[0]
+    yield 'Second line'
+  }
+
+  await streamResponseToOutline(outline as any, userRow as any, tokenStream())
+
+  const assistantRow = outline.root.children[1]
+  assert.equal(assistantRow.children.length, 2)
+  assert.equal(assistantRow.children[0].text.string, 'First line')
+  assert.equal(assistantRow.children[1].text.string, 'Second line')
+  assert.strictEqual(assistantRow.children[0], firstLineRow)
+})
+
 test('insertStaticResponse converts markdown rows and inline formatting', () => {
   const userRow = createRow('<user>')
   const outline = new FakeOutline([userRow])
@@ -242,6 +263,56 @@ test('streamResponseToOutline converts markdown rows and inline formatting', asy
   assert.equal(row.type, 'unordered')
   assert.equal(row.text.string, 'Bold item')
   assertAttribute(row, 'Bold', 'strong')
+})
+
+test('streamResponseToOutline removes fenced code rows and marks code lines', async () => {
+  const userRow = createRow('<user>')
+  const outline = new FakeOutline([userRow])
+
+  async function* tokenStream(): AsyncGenerator<string, void, unknown> {
+    yield '```\n'
+    yield 'code line\n'
+    yield '```\n'
+    yield 'after'
+  }
+
+  await streamResponseToOutline(outline as any, userRow as any, tokenStream())
+
+  const assistantRow = outline.root.children[1]
+  assert.equal(assistantRow.children.length, 2)
+
+  assert.equal(assistantRow.children[0].type, 'code')
+  assert.equal(assistantRow.children[0].text.string, 'code line')
+
+  assert.equal(assistantRow.children[1].type, 'row')
+  assert.equal(assistantRow.children[1].text.string, 'after')
+})
+
+test('streamResponseToOutline nests rows based on indentation', async () => {
+  const userRow = createRow('<user>')
+  const outline = new FakeOutline([userRow])
+
+  const markdown = [
+    '- Parent',
+    '  - Child',
+    '    - Grandchild'
+  ].join('\n')
+
+  await streamResponseToOutline(outline as any, userRow as any, makeTokenStream(markdown))
+
+  const assistantRow = outline.root.children[1]
+  const parent = assistantRow.children[0]
+
+  assert.equal(parent.type, 'unordered')
+  assert.equal(parent.text.string, 'Parent')
+
+  const child = parent.children[0]
+  assert.equal(child.type, 'unordered')
+  assert.equal(child.text.string, 'Child')
+
+  const grandchild = child.children[0]
+  assert.equal(grandchild.type, 'unordered')
+  assert.equal(grandchild.text.string, 'Grandchild')
 })
 
 function assertAttribute(row: FakeRow, fragment: string, name: string, value?: string): void {
