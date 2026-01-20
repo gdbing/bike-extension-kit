@@ -205,7 +205,7 @@ export function parseMarkdownToRows(markdown: string): ParsedMarkdownRow[] {
   return rows
 }
 
-function parseMarkdownLine(line: string): {
+export function parseMarkdownLine(line: string): {
   text: string
   type?: RowType
   attributes?: Record<string, string>
@@ -264,7 +264,7 @@ function parseTaskPrefix(line: string): { checked: boolean; text: string } | nul
   return null
 }
 
-function parseInlineMarkdown(input: string): { text: string; runs: TextAttributeRun[] } {
+export function parseInlineMarkdown(input: string): { text: string; runs: TextAttributeRun[] } {
   let output = ''
   const runs: TextAttributeRun[] = []
   const active: Record<string, number | null> = {

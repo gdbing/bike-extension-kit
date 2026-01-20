@@ -26,6 +26,8 @@ async function main(): Promise<void> {
   await import('./inline-opener.test')
   await import('./inline-path.test')
   await import('./message-parser.test')
+  await import('./markdown-inline.test')
+  await import('./markdown-line.test')
   await import('./response-inserter.test')
   await import('./settings-parser.test')
   await import('./system-message.test')
