@@ -52,3 +52,6 @@
 - Prefer the project-local skill at `skills/bike-evaluate-debug/` and reuse its scripts instead of ad-hoc snippets.
 - Adjust the scripts in `skills/bike-evaluate-debug/scripts/` for new probes; they already follow the safe quoting pattern.
 - When a script writes to the outline, clean up with `delete-debug-rows.js`.
+
+## Text Attribute Notes
+- When reading attributed text at run boundaries, use downstream affinity (for example `attributeAt(..., 'downstream')`) to avoid off-by-one marker placement.

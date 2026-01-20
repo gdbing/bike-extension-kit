@@ -85,11 +85,14 @@ function getFileUrlCandidates(reference: InlineReference, baseFileUrl: string | 
   return candidates
 }
 
-function getFirstLinkURL(text: { string: string; attributeAt?: (name: string, index: number) => string | null }): string | null {
+function getFirstLinkURL(text: {
+  string: string
+  attributeAt?: (name: string, index: number, affinity?: 'upstream' | 'downstream') => string | null
+}): string | null {
   if (typeof text.attributeAt !== 'function') return null
   const length = text.string.length
   for (let index = 0; index < length; index += 1) {
-    const value = text.attributeAt('a', index)
+    const value = text.attributeAt('a', index, 'downstream')
     if (value) return value
   }
   return null

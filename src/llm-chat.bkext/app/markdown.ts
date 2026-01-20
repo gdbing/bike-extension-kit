@@ -44,14 +44,14 @@ export function attributedTextToMarkdown(text: AttributedString): string {
 
   const getAttribute = (name: string, index: number): string | null => {
     if (typeof text.attributesAt === 'function') {
-      const attributes = text.attributesAt(index)
+      const attributes = text.attributesAt(index, 'downstream')
       if (Object.prototype.hasOwnProperty.call(attributes, name)) {
         const value = attributes[name]
         return value == null ? '' : value
       }
     }
     if (typeof text.attributeAt === 'function') {
-      const value = text.attributeAt(name, index)
+      const value = text.attributeAt(name, index, 'downstream')
       return value == null ? null : value
     }
     return null
