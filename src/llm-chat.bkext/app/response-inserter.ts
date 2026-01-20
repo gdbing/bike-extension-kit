@@ -68,30 +68,36 @@ export async function streamResponseToOutline(
 
   let buffer = ''
   let currentRowContent = ''
+  const completedLines: string[] = []
+
+  const renderCompletedLines = () => {
+    if (completedLines.length === 0) return
+    const rawText = completedLines.join('\n')
+    replaceRowsWithMarkdown(outline, assistantRow, rawText)
+    currentRow = outline.insertRows(
+      [{ text: currentRowContent }],
+      assistantRow
+    )[0]
+  }
 
   for await (const token of tokenGenerator) {
     buffer += token
 
     // Split on newlines
+    let completedLine = false
     while (buffer.includes('\n')) {
       const newlineIndex = buffer.indexOf('\n')
       const lineContent = buffer.slice(0, newlineIndex)
       buffer = buffer.slice(newlineIndex + 1)
 
-      // Finalize current row with complete line
       const finalContent = currentRowContent + lineContent
-      if (finalContent) {
-        outline.transaction({ animate: 'none' }, () => {
-          currentRow.text.replace([0, currentRow.text.string.length], finalContent)
-        })
-      }
-
-      // Create new row for next line
-      currentRow = outline.insertRows(
-        [{ text: '' }],
-        assistantRow
-      )[0]
+      completedLines.push(finalContent)
       currentRowContent = ''
+      completedLine = true
+    }
+
+    if (completedLine) {
+      renderCompletedLines()
     }
 
     // Update current row with remaining buffer (no newline yet)
@@ -104,20 +110,10 @@ export async function streamResponseToOutline(
     }
   }
 
-  // Flush any remaining content
-  if (currentRowContent) {
-    outline.transaction({ animate: 'none' }, () => {
-      currentRow.text.replace([0, currentRow.text.string.length], currentRowContent)
-    })
-  }
-
-  // Remove empty trailing row if exists
-  if (currentRow.text.string === '') {
-    outline.removeRows([currentRow])
-  }
-
-  const rawLines = assistantRow.children.map(row => row.text.string)
-  const rawText = rawLines.join('\n')
+  const finalLines = currentRowContent
+    ? completedLines.concat(currentRowContent)
+    : completedLines
+  const rawText = finalLines.join('\n')
   replaceRowsWithMarkdown(outline, assistantRow, rawText)
 }
 
