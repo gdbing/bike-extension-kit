@@ -17,6 +17,7 @@ type ParseOptions = {
  * - <user> → user role, <system> → system role
  * - Any other <name> marker (including <assistant>, model names) → assistant role
  * - <model> and <config> markers are ignored (used for settings only)
+ * - <error> markers are ignored (used for inline error messages)
  * - Only content nested under a marker is included in that message
  * - Note-type rows are skipped (treated as comments)
  * - Tags are indented <name> rows inside a message; they emit open/close tags and de-indent their contents
@@ -187,6 +188,11 @@ function parseMessagesInternal(
           row = nextRowAfterSubtree(row)
           continue
         } else if (markerName === 'model' || markerName === 'config') {
+          currentMessage = null
+          markerRow = null
+          row = nextRowAfterSubtree(row)
+          continue
+        } else if (markerName === 'error') {
           currentMessage = null
           markerRow = null
           row = nextRowAfterSubtree(row)

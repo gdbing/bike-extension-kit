@@ -49,10 +49,22 @@ Keep it running while using the extension.
 
 ## Configuration
 
-Edit `src/llm-chat.bkext/config.json` to adjust the server URL, port, polling interval, default model parameters, the default system message, or the ordered model list. The extension reads these values at runtime and will error if required fields are missing or unsupported. The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host_permissions`. Marker colors are configured under `ui.markerColors`. `ui.showErrorsInOutline` controls whether errors are inserted as `<error>` blocks. The default system message is only applied when no `<system>` marker appears before the cursor.
+Edit `src/llm-chat.bkext/config.json` to adjust 
+- the server URL
+- port
+- polling interval
+- default model parameters
+- the default system message
+- the ordered model list. 
+The extension reads these values at runtime and will error if required fields are missing or unsupported.
 
-The extension also provides an editor style named "LLM Chat" (Bike > Window > Style Sheets) to show marker colors and code styling.
-Marker colors refresh automatically as marker rows are edited or moved.
+The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host_permissions`. 
+
+`ui.showErrorsInOutline` controls whether errors are inserted into the outline as `<error>` blocks (they are not parsed as assistant messages).
+
+The default system message is only applied when no `<system>` marker appears before the cursor.
+
+The extension also provides an editor style named "LLM Chat" (Bike > Window > Style Sheets) to show marker colors and code styling. Marker colors are configured under `ui.markerColors`.
 
 ## Usage
 
@@ -94,7 +106,7 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 ### Message Parser Rules
 
 - Markers must be root-level rows matching `<name>`.
-- `<user>` → user role, `<system>` → system role, any other marker → assistant role.
+- `<user>` → user role, `<system>` → system role; `<inline>`, `<cache>`, `<model>`, `<config>`, and `<error>` markers are ignored; any other marker → assistant role.
 - `<cache>` marks the next message for a 1-hour cache breakpoint (latest `<cache>` wins, Anthropic only).
 - Only content nested under a marker is included; note rows and their descendants are skipped.
 - Special row types are converted to Markdown (`#` headings, `>` quotes, ordered/unordered/task lists, fenced code blocks).
@@ -124,7 +136,7 @@ The extension parses the document and sends messages to the server. The server:
 - Manages API keys (via `llm` CLI or environment variables)
 - Handles provider-specific logic (system message handling, etc.)
 - Streams responses back to the extension
-- Sends error details inline so the outline reflects failures
+- Sends error details inline by inserting `<error>` marker rows so the outline reflects failures
 
 ## API (local server)
 
@@ -136,10 +148,3 @@ The extension parses the document and sends messages to the server. The server:
 ```bash
 npm run test:llm-chat
 ```
-
-## Known limitations / future work
-
-- Model selection is basic; Anthropic, OpenAI, and OpenRouter supported today.
-- No request cancellation; polling-based streaming.
-- Minimal error UI; only inline message insertion.
-- Prompt caching (Anthropic only): the most recent four user messages get 5-minute cache breakpoints. A `<cache>` marker upgrades the next message and any earlier cached breakpoints (up to the 4-breakpoint limit) to 1-hour TTL.

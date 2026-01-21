@@ -2,11 +2,30 @@ import type { Row } from 'bike/app'
 
 export const MARKER_ATTRIBUTE = 'llm-marker'
 
-export function setMarkerAttribute(row: Row, markerText: string): void {
+const NON_MESSAGE_MARKERS = new Set(['inline', 'cache', 'model', 'config'])
+
+function resolveMarkerAttributeValue(markerText: string): string | null {
   const normalized = markerText.trim().toLowerCase()
   const match = normalized.match(/^<([^>]+)>$/)
-  const value = match ? match[1] : normalized
-  row.setAttribute(MARKER_ATTRIBUTE, value)
+  if (!match) return null
+
+  const markerName = match[1]
+  if (markerName === 'user' || markerName === 'system' || markerName === 'error') {
+    return markerName
+  }
+  if (NON_MESSAGE_MARKERS.has(markerName)) {
+    return markerName
+  }
+  return 'assistant'
+}
+
+export function setMarkerAttribute(row: Row, markerText: string): void {
+  const value = resolveMarkerAttributeValue(markerText)
+  if (value) {
+    row.setAttribute(MARKER_ATTRIBUTE, value)
+  } else {
+    clearMarkerAttribute(row)
+  }
 }
 
 export function clearMarkerAttribute(row: Row): void {
@@ -20,10 +39,9 @@ export function updateMarkerAttributes(root: Row): void {
       continue
     }
 
-    const text = row.text.string.trim()
-    const match = text.match(/^<([^>]+)>$/)
-    if (match) {
-      row.setAttribute(MARKER_ATTRIBUTE, match[1].toLowerCase())
+    const value = resolveMarkerAttributeValue(row.text.string)
+    if (value) {
+      row.setAttribute(MARKER_ATTRIBUTE, value)
     } else {
       clearMarkerAttribute(row)
     }
