@@ -9,12 +9,10 @@ import { updateMarkerAttributes } from './marker-attributes'
 import { registerStatusInspector, resetStatus, updateCacheStatus } from './status-inspector'
 import { applyDefaultSystemMessage } from './system-message'
 import { runChatCommand, getResponseMarkerText } from './chat-command'
-import { replayOutlineAsStreamingMarkdown } from './debug-outline-replay'
 import { openInlineDocumentsIfNeeded } from './inline-opener'
 
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
-const ENABLE_DEBUG_OUTLINE_REPLAY = true
 let canOpenURL = false
 
 async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
@@ -113,13 +111,6 @@ function insertUserMarkerCommand(context: CommandContext): boolean {
     restoreSelection(editor, selectionSnapshot)
   })
 
-  return true
-}
-
-function debugReplayOutlineCommand(context: CommandContext): boolean {
-  const editor = context.editor
-  if (!editor) return false
-  void replayOutlineAsStreamingMarkdown(editor)
   return true
 }
 
@@ -223,17 +214,11 @@ export async function activate(context: AppExtensionContext) {
   })
 
   // Register command
-  const commands: Record<string, (context: CommandContext) => boolean> = {
-    'llm-chat:send': sendMessageCommand,
-    'llm-chat:insert-user': insertUserMarkerCommand
-  }
-
-  if (ENABLE_DEBUG_OUTLINE_REPLAY) {
-    commands['llm-chat:debug-replay-outline'] = debugReplayOutlineCommand
-  }
-
   bike.commands.addCommands({
-    commands
+    commands: {
+      'llm-chat:send': sendMessageCommand,
+      'llm-chat:insert-user': insertUserMarkerCommand
+    }
   })
 
   // Register keybindings for both modes
