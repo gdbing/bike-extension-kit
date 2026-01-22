@@ -5,7 +5,7 @@ import { parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
-import { updateMarkerAttributes } from './marker-attributes'
+import { setMarkerAttribute, updateMarkerAttributes } from './marker-attributes'
 import { registerStatusInspector, resetStatus, updateCacheStatus } from './status-inspector'
 import { applyDefaultSystemMessage } from './system-message'
 import { runChatCommand, getResponseMarkerText } from './chat-command'
@@ -96,6 +96,7 @@ function insertUserMarkerCommand(context: CommandContext): boolean {
       }
       const currentText = row.text.string
       row.text.replace([0, currentText.length], '<user>')
+      setMarkerAttribute(row, '<user>')
       const childRow = outline.insertRows([{ text: '' }], row, row.firstChild)[0]
       editor.selectCaret(childRow, 0)
       return
@@ -107,6 +108,7 @@ function insertUserMarkerCommand(context: CommandContext): boolean {
         : selection.row
     const parent = startRow.parent ?? outline.root
     const markerRow = outline.insertRows([{ text: '<user>' }], parent, startRow)[0]
+    setMarkerAttribute(markerRow, '<user>')
     outline.moveRows(selectedRows, markerRow)
     restoreSelection(editor, selectionSnapshot)
   })
