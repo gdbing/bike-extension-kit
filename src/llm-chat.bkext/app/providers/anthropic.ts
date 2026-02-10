@@ -42,9 +42,13 @@ async function buildHttpError(response: Response): Promise<HttpError> {
     detail = null
   }
 
-  const baseMessage = `HTTP ${response.status} ${response.statusText}`
+  const statusTextValue = (response as { statusText?: unknown }).statusText
+  const statusText = typeof statusTextValue === 'string' ? statusTextValue : ''
+  const baseMessage = statusText
+    ? `HTTP ${response.status} ${statusText}`
+    : `HTTP ${response.status}`
   const message = detail ? `${baseMessage}: ${detail}` : baseMessage
-  return new HttpError(response.status, response.statusText, message)
+  return new HttpError(response.status, statusText, message)
 }
 
 export async function* streamCompletion(

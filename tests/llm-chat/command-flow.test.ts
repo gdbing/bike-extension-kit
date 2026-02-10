@@ -58,14 +58,16 @@ function makeDeps(overrides: Partial<ChatCommandDependencies> = {}): ChatCommand
 
 test('reports settings errors inline and skips streaming', async () => {
   const context = makeContext()
-  let inserted: { text: string; marker: string | undefined } | null = null
+  let insertedText: string | null = null
+  let insertedMarker: string | undefined
   let streamCalled = false
 
   const deps = makeDeps({
     parseMessages: () => [{ role: 'user', content: 'Hi\n' }],
     parseConversationSettings: () => ({ errors: ['Bad config'] }),
     insertStaticResponse: (_outline, _row, text, markerText) => {
-      inserted = { text, marker: markerText }
+      insertedText = text
+      insertedMarker = markerText
     },
     streamCompletion: () => {
       streamCalled = true
@@ -80,8 +82,8 @@ test('reports settings errors inline and skips streaming', async () => {
 
   await runChatCommand(context, deps)
 
-  assert.equal(inserted?.text, 'Error: Bad config')
-  assert.equal(inserted?.marker, '<error>')
+  assert.equal(insertedText, 'Error: Bad config')
+  assert.equal(insertedMarker, '<error>')
   assert.equal(streamCalled, false)
 })
 

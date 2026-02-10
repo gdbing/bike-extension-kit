@@ -10,6 +10,7 @@
     "../src/llm-chat.bkext/app/message-parser.ts",
     "../src/llm-chat.bkext/app/response-inserter.ts",
     "../src/llm-chat.bkext/app/providers/types.ts",
+    "../tests/llm-chat/**/*.d.ts",
     "../tests/llm-chat/**/*.ts"
   ]
 }
