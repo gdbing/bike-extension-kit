@@ -5,7 +5,11 @@ import { parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { streamCompletion } from './providers/anthropic'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
-import { setMarkerAttribute, updateMarkerAttributes } from './marker-attributes'
+import {
+  MARKER_ATTRIBUTE,
+  updateMarkerAttribute,
+  updateMarkerAttributes
+} from './marker-attributes'
 import { registerStatusInspector, resetStatus, updateCacheStatus } from './status-inspector'
 import { applyDefaultSystemMessage } from './system-message'
 import { runChatCommand, getResponseMarkerText } from './chat-command'
@@ -96,7 +100,6 @@ function insertUserMarkerCommand(context: CommandContext): boolean {
       }
       const currentText = row.text.string
       row.text.replace([0, currentText.length], '<user>')
-      setMarkerAttribute(row, '<user>')
       const childRow = outline.insertRows([{ text: '' }], row, row.firstChild)[0]
       editor.selectCaret(childRow, 0)
       return
@@ -108,7 +111,6 @@ function insertUserMarkerCommand(context: CommandContext): boolean {
         : selection.row
     const parent = startRow.parent ?? outline.root
     const markerRow = outline.insertRows([{ text: '<user>' }], parent, startRow)[0]
-    setMarkerAttribute(markerRow, '<user>')
     outline.moveRows(selectedRows, markerRow)
     restoreSelection(editor, selectionSnapshot)
   })
@@ -181,22 +183,60 @@ export async function activate(context: AppExtensionContext) {
   canOpenURL = context.permissions.contains('openURL')
 
   let outlineObserver: { dispose: () => void } | undefined
-  let outlineTextObserver: { dispose: () => void } | undefined
 
   const attachEditorObserver = (editor?: OutlineEditor) => {
     outlineObserver?.dispose()
     outlineObserver = undefined
-    outlineTextObserver?.dispose()
-    outlineTextObserver = undefined
 
     if (!editor) return
 
-    updateMarkerAttributes(editor.outline.root)
-    outlineObserver = editor.outline.streamQuery('/body', () => {
-      updateMarkerAttributes(editor.outline.root)
-    })
-    outlineTextObserver = editor.outline.streamQuery('/body@text', () => {
-      updateMarkerAttributes(editor.outline.root)
+    const outline = editor.outline
+    updateMarkerAttributes(outline.root)
+    outlineObserver = outline.observeChanges((change) => {
+      switch (change.type) {
+        case 'rowChanged': {
+          if (change.change.type === 'setAttribute') {
+            if (change.change.name === MARKER_ATTRIBUTE) return
+            return
+          }
+
+          if (
+            change.change.type !== 'replacedText' &&
+            change.change.type !== 'replacedTextAndSetType' &&
+            change.change.type !== 'setType'
+          ) {
+            return
+          }
+
+          const row = outline.getRowById(change.rowId)
+          if (row) {
+            updateMarkerAttribute(row)
+          }
+          return
+        }
+        case 'siblingsInserted':
+          for (const row of change.siblings) {
+            updateMarkerAttribute(row)
+          }
+          return
+        case 'siblingsMoved': {
+          const seenRowIds = new Set<string>()
+          for (const row of change.oldSiblings) {
+            if (seenRowIds.has(row.id)) continue
+            seenRowIds.add(row.id)
+            updateMarkerAttribute(row)
+          }
+          for (const row of change.newSiblings) {
+            if (seenRowIds.has(row.id)) continue
+            seenRowIds.add(row.id)
+            updateMarkerAttribute(row)
+          }
+          return
+        }
+        case 'reload':
+          updateMarkerAttributes(change.newOutline.root)
+          return
+      }
     })
   }
 
@@ -207,7 +247,6 @@ export async function activate(context: AppExtensionContext) {
   context['llm-chat-outline-observer'] = {
     dispose: () => {
       outlineObserver?.dispose()
-      outlineTextObserver?.dispose()
     }
   }
 

@@ -1,5 +1,4 @@
 import { Outline, Row } from 'bike/app'
-import { setMarkerAttribute } from './marker-attributes'
 import { parseMarkdownLineTokens, parseMarkdownToRows, ParsedMarkdownRow, TextAttributeRun, TextDeleteRange } from './markdown'
 
 /**
@@ -31,9 +30,7 @@ function prepareMarkerRow(
   afterRow: Row,
   markerText: string
 ): Row {
-  const markerRow = findOrCreateMarkerRow(outline, afterRow, markerText)
-  setMarkerAttribute(markerRow, markerText)
-  return markerRow
+  return findOrCreateMarkerRow(outline, afterRow, markerText)
 }
 
 export function insertStaticResponse(

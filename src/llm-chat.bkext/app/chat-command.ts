@@ -86,7 +86,6 @@ export async function runChatCommand(
   try {
     const config = deps.getConfig()
     showErrorsInOutline = config.ui.showErrorsInOutline
-    deps.updateMarkerAttributes(editor.outline.root)
 
     await deps.openInlineDocumentsIfNeeded(editor, selection.row, originDocumentFileUrl)
     if (deps.getInlineResolver) {

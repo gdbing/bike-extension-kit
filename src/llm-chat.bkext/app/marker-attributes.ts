@@ -19,31 +19,41 @@ function resolveMarkerAttributeValue(markerText: string): string | null {
   return 'assistant'
 }
 
-export function setMarkerAttribute(row: Row, markerText: string): void {
-  const value = resolveMarkerAttributeValue(markerText)
+function applyMarkerAttribute(row: Row, value: string | null): void {
+  const currentValue = row.attributes[MARKER_ATTRIBUTE]
   if (value) {
-    row.setAttribute(MARKER_ATTRIBUTE, value)
-  } else {
-    clearMarkerAttribute(row)
+    if (currentValue !== value) {
+      row.setAttribute(MARKER_ATTRIBUTE, value)
+    }
+    return
+  }
+
+  if (currentValue !== undefined) {
+    row.removeAttribute(MARKER_ATTRIBUTE)
   }
 }
 
 export function clearMarkerAttribute(row: Row): void {
-  row.removeAttribute(MARKER_ATTRIBUTE)
+  applyMarkerAttribute(row, null)
+}
+
+function isRootLevelRow(row: Row): boolean {
+  const parent = row.parent
+  return Boolean(parent && parent.level === 0)
+}
+
+export function updateMarkerAttribute(row: Row): void {
+  if (!isRootLevelRow(row) || row.type === 'note') {
+    clearMarkerAttribute(row)
+    return
+  }
+
+  const value = resolveMarkerAttributeValue(row.text.string)
+  applyMarkerAttribute(row, value)
 }
 
 export function updateMarkerAttributes(root: Row): void {
   for (const row of root.children) {
-    if (row.type === 'note') {
-      clearMarkerAttribute(row)
-      continue
-    }
-
-    const value = resolveMarkerAttributeValue(row.text.string)
-    if (value) {
-      row.setAttribute(MARKER_ATTRIBUTE, value)
-    } else {
-      clearMarkerAttribute(row)
-    }
+    updateMarkerAttribute(row)
   }
 }
