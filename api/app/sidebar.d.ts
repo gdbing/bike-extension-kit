@@ -1,48 +1,33 @@
-import { View, RelativeOrdering } from './bike'
-import { OutlinePath } from '../core/outline-path'
+import { View } from './bike'
 import { CommandName } from './commands'
 import { Disposable } from './system'
 
-/** Sidebar is a view that displays a list items. */
+/** Sidebar is a view that displays a list of navigation items. */
 export interface Sidebar extends View {
   /**
-   * Add an item to the sidebar.
-   * @param item - The item to add.
-   * @returns A handle to update or remove the item.
+   * Add a navigation shortcut to the top of the sidebar.
+   *
+   * When clicked, the action runs (typically navigating to the represented row,
+   * creating it if needed). The location is automatically highlighted when the
+   * editor navigates to its represented row by any means.
+   *
+   * @param item - The location item to add.
+   * @returns A disposable to remove the item.
    */
-  addItem(item: SidebarItem): SidebarItemHandle
+  addLocation(item: LocationItem): Disposable
 }
 
-/** An item in the sidebar. */
-export type SidebarItem = {
-  /** The unique identifier for the item. */
-  id: ItemId
-  /** The text to display for the item. */
+/** A location item in the sidebar. */
+export type LocationItem = Readonly<{
+  /** Unique identifier. Adding a location with an existing ID replaces it. */
+  id: string
+  /** The text to display. */
   text: string
-  /** The SFSymbol to display for the item. */
-  symbol?: string
-  /** Whether the item uses the group display style. */
-  isGroup?: boolean
-  /* Where the item should be placed relative to other items. */
-  ordering?: RelativeOrdering<string, ItemId>
-  /** The action to perform when the item is selected. */
-  action?: CommandName | ((_: Sidebar) => void)
-  /** The specification for the item's children. */
-  children?: SidebarItemChildren
-}
-
-export type SidebarItemChildren = {
-  query: OutlinePath
-  symbol?: string
-  //scope?: "frontmostEditor" | "frontmostWindow" | "all"
-  //presentation?: "flat" | "tree"
-}
-
-/** A handle to update or remove a sidebar item. */
-export interface SidebarItemHandle extends Disposable {
-  text: string
-  symbol?: string
-}
-
-/** Unique identifier for a sidebar item. */
-export type ItemId = string
+  /** The SF Symbol name to display. */
+  symbol: string
+  /** The persistent row ID this location represents. Provide the expected ID
+   * even if the row doesn't exist yet. */
+  representedRowId: string
+  /** The action to perform when clicked. */
+  action: CommandName | (() => void)
+}>

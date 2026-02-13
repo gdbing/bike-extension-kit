@@ -31,7 +31,7 @@ declare global {
     /** Observer called for all current and future windows. */
     observeWindows(handler: (_: Window) => void): Disposable
     /** Observer called current and future frontmost windows. */
-    observeFrontmostWindow(handler: (_: Window) => void): Disposable
+    observeFrontmostWindow(handler: (_: Window | undefined) => void): Disposable
 
     /** All open documents. */
     readonly documents: Document[]
@@ -40,7 +40,7 @@ declare global {
     /** Observer called for all current and future documents. */
     observeDocuments(handler: (_: Document) => void): Disposable
     /** Observer called current and future frontmost documents. */
-    observeFrontmostDocument(handler: (_: Document) => void): Disposable
+    observeFrontmostDocument(handler: (_: Document | undefined) => void): Disposable
 
     /** All outline editors. */
     readonly outlineEditors: OutlineEditor[]
@@ -49,7 +49,7 @@ declare global {
     /** Observer called for all current and future outline editors. */
     //observeOutlineEditors(handler: (_: OutlineEditor) => void): Disposable;
     /** Observer called current and future frontmost outline editors. */
-    observeFrontmostOutlineEditor(handler: (_: OutlineEditor) => void): Disposable
+    observeFrontmostOutlineEditor(handler: (_: OutlineEditor | undefined) => void): Disposable
 
     /**
      * Show a window or application modal alert.
@@ -83,6 +83,35 @@ declare global {
      * ```
      */
     showAlert(options: AlertOptions, window?: Window): Promise<AlertResult>
+
+    /**
+     * Show a fuzzy-filtering choice box for selecting from a list of items.
+     *
+     * @param items - The items to choose from
+     * @param options - The options for the choice box
+     * @param window - A window to attach the choice box to
+     * @returns A promise that resolves to the selected indices, or null if cancelled.
+     * @example
+     * ```typescript
+     * const indices = await bike.showChoiceBox(
+     *   [
+     *     { name: "First Option", symbol: "star" },
+     *     { name: "Second Option", container: "Category A" },
+     *     { name: "Third Option" }
+     *   ],
+     *   {
+     *     placeholder: "Choose an option...",
+     *     defaultSymbol: "circle",
+     *     allowsMultipleSelection: false
+     *   }
+     * );
+     *
+     * if (indices !== null) {
+     *   console.log("Selected index:", indices[0]);
+     * }
+     * ```
+     */
+    showChoiceBox(items: ChoiceBoxItem[], options?: ChoiceBoxOptions, window?: Window): Promise<number[] | null>
   }
 }
 
@@ -143,6 +172,7 @@ export interface Document {
   readonly displayName: string
   readonly windows: Window[] // ordered front to back
   readonly frontmostWindow?: Window
+  readonly outline: Outline
 }
 
 /** Interface for a document window. */
@@ -154,7 +184,7 @@ export interface Window {
   readonly outlineEditors: OutlineEditor[]
   readonly currentOutlineEditor?: OutlineEditor
 
-  observeCurrentOutlineEditor(handler: (_: OutlineEditor) => void): Disposable
+  observeCurrentOutlineEditor(handler: (_: OutlineEditor | undefined) => void): Disposable
 
   /**
    * Present a WebView based sheet.
@@ -214,3 +244,25 @@ interface AlertResult {
 
 type AlertStyle = 'informational' | 'warning' | 'critical'
 type AlertFieldType = 'text' | 'secure' | 'checkbox' | 'dropdown'
+
+/** An item to display in a choice box. */
+interface ChoiceBoxItem {
+  /** The display name for this item. */
+  name: string
+  /** Optional container/category shown after the name (separated by tab). */
+  container?: string
+  /** Optional SF Symbol name to display beside the item. */
+  symbol?: string
+}
+
+/** Options for configuring a choice box. */
+interface ChoiceBoxOptions {
+  /** Placeholder text shown in the search field. */
+  placeholder?: string
+  /** Default SF Symbol to use when an item doesn't specify one. */
+  defaultSymbol?: string
+  /** Whether the user can dismiss without selecting (default: false). */
+  allowsEmptySelection?: boolean
+  /** Whether multiple items can be selected (default: false). */
+  allowsMultipleSelection?: boolean
+}

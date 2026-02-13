@@ -1,29 +1,12 @@
 import { AppExtensionContext, CommandContext, Window } from 'bike/app'
-import {
-  clickHandleCommand,
-  clickLinkCommand,
-  headingsCommand,
-  homeCommand,
-  openLinkCommand,
-  toggleDoneCommand,
-  toggleFocusCommand,
-  toggleFoldCommand,
-} from './commands'
-
-import { moveDownMaintainingLevelCommand, moveUpMaintainingLevelCommand } from './move-commands'
+import { clickHandleCommand, clickLinkCommand, clickFocusCommand } from './commands'
 
 export async function activate(context: AppExtensionContext) {
+  // Hidden commands for style interactions (not shown in command palette)
   bike.commands.addCommands({
     commands: {
-      'bike:home': homeCommand,
-      'bike:headings': headingsCommand,
-      'bike:toggle-focus': toggleFocusCommand,
-      'bike:toggle-fold': toggleFoldCommand,
-      'bike:move-up-maintaining-level': moveUpMaintainingLevelCommand,
-      'bike:move-down-maintaining-level': moveDownMaintainingLevelCommand,
-      'bike:toggle-done': toggleDoneCommand,
-      'bike:open-link': openLinkCommand,
       'bike:.click-handle': clickHandleCommand,
+      'bike:.click-focus': clickFocusCommand,
       'bike:.click-link': clickLinkCommand,
     },
   })
@@ -31,7 +14,7 @@ export async function activate(context: AppExtensionContext) {
   bike.keybindings.addKeybindings({
     keymap: 'block-mode',
     keybindings: {
-      space: 'bike:toggle-done',
+      space: 'row:toggle-done',
     },
   })
 
@@ -46,31 +29,33 @@ export async function activate(context: AppExtensionContext) {
     },
   })
 
-  bike.observeWindows(async (window: Window) => {
-    window.sidebar.addItem({
-      id: 'bike:home',
+  function addOrUpdateHomeLocation(window: Window, representedRowId: string) {
+    window.sidebar.addLocation({
+      id: 'go:home',
       text: 'Home',
       symbol: 'house',
-      ordering: { section: 'actions' },
-      action: 'bike:home',
+      action: 'go:home',
+      representedRowId: representedRowId,
     })
+  }
 
-    window.sidebar.addItem({
-      id: 'bike:headings',
-      text: 'Headings 􀱁',
-      ordering: { section: 'filters' },
-      isGroup: true,
-      action: 'bike:headings',
-      children: {
-        query: '//heading',
-      },
+  bike.observeWindows(async (window: Window) => {
+    // hack to make sure home location is added before other locations
+    // probably better to add ordering weights to sidebar locations later
+    addOrUpdateHomeLocation(window, window.currentOutlineEditor?.outline.root.id ?? '')
+    window.observeCurrentOutlineEditor((editor) => {
+      addOrUpdateHomeLocation(window, editor?.outline.root.id ?? '')
     })
   })
 }
 
 function wrapTextSelection(startChar: string, endChar: string, context: CommandContext): boolean {
   const editor = context.editor
-  const selection = editor.selection
+  const selection = editor?.selection
+
+  if (!editor || !selection) {
+    return false
+  }
 
   if (selection.type === 'text') {
     const detail = selection.detail
