@@ -4,7 +4,7 @@ import { parseMarkdownLineTokens, parseMarkdownToRows, ParsedMarkdownRow, TextAt
 /**
  * Create a new marker row after the given row.
  */
-function findOrCreateMarkerRow(
+function createMarkerRow(
   outline: Outline,
   afterRow: Row,
   markerText: string
@@ -25,21 +25,13 @@ function findOrCreateMarkerRow(
   return newRows[0]
 }
 
-function prepareMarkerRow(
-  outline: Outline,
-  afterRow: Row,
-  markerText: string
-): Row {
-  return findOrCreateMarkerRow(outline, afterRow, markerText)
-}
-
 export function insertStaticResponse(
   outline: Outline,
   afterRow: Row,
   text: string,
   markerText = '<assistant>'
 ): void {
-  const targetRow = prepareMarkerRow(outline, afterRow, markerText)
+  const targetRow = createMarkerRow(outline, afterRow, markerText)
 
   const normalized = text.replace(/\r\n/g, '\n')
   replaceRowsWithMarkdown(outline, targetRow, normalized)
@@ -54,60 +46,91 @@ export async function streamResponseToOutline(
   tokenGenerator: AsyncGenerator<string, void, unknown>,
   markerText = '<assistant>'
 ): Promise<void> {
-  // Find or create assistant heading
-  const assistantRow = prepareMarkerRow(outline, afterRow, markerText)
-
-  // Create initial content row
-  let currentRow = outline.insertRows([{ text: '' }], assistantRow)[0]
-
   const state: StreamParseState = {
     indentUnit: null,
     rowStack: [],
     inCodeFence: false
   }
 
+  let streamRows: StreamRows | null = null
+
   let buffer = ''
   let currentRowContent = ''
 
-  for await (const token of tokenGenerator) {
-    buffer += token
-
-    // Split on newlines
-    while (buffer.includes('\n')) {
-      const newlineIndex = buffer.indexOf('\n')
-      let lineContent = buffer.slice(0, newlineIndex)
-      buffer = buffer.slice(newlineIndex + 1)
-
-      if (lineContent.endsWith('\r')) {
-        lineContent = lineContent.slice(0, -1)
+  try {
+    for await (const token of tokenGenerator) {
+      if (!token) {
+        continue
       }
 
-      const finalContent = currentRowContent + lineContent
-      currentRowContent = ''
-      finalizeLine(outline, assistantRow, currentRow, finalContent, state)
-      currentRow = outline.insertRows([{ text: '' }], assistantRow)[0]
-    }
+      if (!streamRows) {
+        streamRows = createStreamRows(outline, afterRow, markerText)
+      }
+      const { assistant } = streamRows
 
-    // Update current row with remaining buffer (no newline yet)
-    if (buffer) {
-      currentRowContent += buffer
-      outline.transaction({ animate: 'none' }, () => {
-        currentRow.text.replace([0, currentRow.text.string.length], currentRowContent)
-      })
-      buffer = ''
+      buffer += token
+
+      // Split on newlines
+      while (buffer.includes('\n')) {
+        const newlineIndex = buffer.indexOf('\n')
+        let lineContent = buffer.slice(0, newlineIndex)
+        buffer = buffer.slice(newlineIndex + 1)
+
+        if (lineContent.endsWith('\r')) {
+          lineContent = lineContent.slice(0, -1)
+        }
+
+        const finalContent = currentRowContent + lineContent
+        currentRowContent = ''
+        finalizeLine(outline, assistant, streamRows.current, finalContent, state)
+        streamRows.current = outline.insertRows([{ text: '' }], assistant)[0]
+      }
+
+      // Update current row with remaining buffer (no newline yet)
+      if (buffer) {
+        currentRowContent += buffer
+        const targetRow = streamRows.current
+        outline.transaction({ animate: 'none' }, () => {
+          targetRow.text.replace([0, targetRow.text.string.length], currentRowContent)
+        })
+        buffer = ''
+      }
     }
+  } catch (error) {
+    if (streamRows) {
+      removeMarkerIfEmpty(outline, streamRows.assistant)
+    }
+    throw error
   }
 
   if (currentRowContent.endsWith('\r')) {
     currentRowContent = currentRowContent.slice(0, -1)
   }
-  finalizeLine(outline, assistantRow, currentRow, currentRowContent, state)
+  if (streamRows) {
+    finalizeLine(outline, streamRows.assistant, streamRows.current, currentRowContent, state)
+    removeMarkerIfEmpty(outline, streamRows.assistant)
+  }
 }
 
 type StreamParseState = {
   indentUnit: string | null
   rowStack: Row[]
   inCodeFence: boolean
+}
+
+type StreamRows = {
+  assistant: Row
+  current: Row
+}
+
+function createStreamRows(
+  outline: Outline,
+  afterRow: Row,
+  markerText: string
+): StreamRows {
+  const assistant = createMarkerRow(outline, afterRow, markerText)
+  const current = outline.insertRows([{ text: '' }], assistant)[0]
+  return { assistant, current }
 }
 
 function finalizeLine(
@@ -270,4 +293,22 @@ function applyTextRuns(text: Row['text'], runs: TextAttributeRun[]): void {
     if (run.end <= run.start) continue
     text.addAttribute(run.name, run.value ?? '', [run.start, run.end])
   }
+}
+
+function removeMarkerIfEmpty(outline: Outline, markerRow: Row): void {
+  const hasMeaningfulContent = markerRow.children.some(child => rowHasVisibleContent(child))
+  if (!hasMeaningfulContent) {
+    outline.removeRows([markerRow])
+  }
+}
+
+function rowHasVisibleContent(row: Row): boolean {
+  if (row.text.string.trim().length > 0) {
+    return true
+  }
+  const rowType = String(row.type ?? '')
+  if (rowType.length > 0 && rowType !== 'row' && rowType !== 'body') {
+    return true
+  }
+  return row.children.some(child => rowHasVisibleContent(child))
 }
