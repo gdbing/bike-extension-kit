@@ -130,8 +130,8 @@ export class CacheWarmManager {
     }
 
     const rankedCandidates = observation.candidates
+      .slice()
       .filter(candidate => candidate.estimatedInputTokens > 0)
-      .map(cloneCandidate)
       .sort((a, b) => b.estimatedInputTokens - a.estimatedInputTokens)
 
     if (rankedCandidates.length === 0) {
@@ -149,7 +149,6 @@ export class CacheWarmManager {
       conversationKey,
       candidates: rankedCandidates,
       selectedCandidateId: selected.id,
-      selectedCandidateFingerprint: selected.contentFingerprint,
       nextRunAt,
       refreshesCompleted: 0,
       refreshesRemaining: this.policy.maxRefreshes
@@ -168,46 +167,29 @@ export class CacheWarmManager {
   prepareRefresh(input: CacheWarmPrepareInput): CacheWarmPrepareResult {
     const tracked = this.conversations.get(input.conversationKey)
     if (!tracked) {
-      return {
-        status: 'blocked',
-        conversationKey: input.conversationKey,
-        reason: 'not-found'
-      }
+      return blocked(input.conversationKey, 'not-found')
     }
 
     if (tracked.refreshesRemaining <= 0) {
       this.conversations.delete(input.conversationKey)
-      return {
-        status: 'blocked',
-        conversationKey: input.conversationKey,
-        reason: 'max-refreshes-reached'
-      }
+      return blocked(input.conversationKey, 'max-refreshes-reached')
     }
 
     if (input.now < tracked.nextRunAt) {
-      return {
-        status: 'blocked',
-        conversationKey: input.conversationKey,
-        reason: 'not-due'
-      }
+      return blocked(input.conversationKey, 'not-due')
     }
 
-    const candidate = tracked.candidates.find(each => {
-      const currentFingerprint = input.currentFingerprintsByCandidateId[each.id]
-      return currentFingerprint === each.contentFingerprint
-    })
+    const candidate = selectUnchangedCandidate(
+      tracked.candidates,
+      input.currentFingerprintsByCandidateId
+    )
 
     if (!candidate) {
       this.conversations.delete(input.conversationKey)
-      return {
-        status: 'blocked',
-        conversationKey: input.conversationKey,
-        reason: 'content-changed'
-      }
+      return blocked(input.conversationKey, 'content-changed')
     }
 
     tracked.selectedCandidateId = candidate.id
-    tracked.selectedCandidateFingerprint = candidate.contentFingerprint
 
     return {
       status: 'ready',
@@ -265,13 +247,14 @@ export class CacheWarmManager {
   getConversationState(conversationKey: string): CacheWarmConversationState | null {
     const tracked = this.conversations.get(conversationKey)
     if (!tracked) return null
+    const selected = tracked.candidates.find(candidate => candidate.id === tracked.selectedCandidateId)
     return {
       conversationKey: tracked.conversationKey,
       candidateId: tracked.selectedCandidateId,
       nextRunAt: tracked.nextRunAt,
       refreshesCompleted: tracked.refreshesCompleted,
       refreshesRemaining: tracked.refreshesRemaining,
-      contentFingerprint: tracked.selectedCandidateFingerprint
+      contentFingerprint: selected?.contentFingerprint ?? ''
     }
   }
 }
@@ -280,34 +263,33 @@ type CacheWarmTrackedConversation = {
   conversationKey: string
   candidates: CacheWarmCandidate[]
   selectedCandidateId: string
-  selectedCandidateFingerprint: string
   nextRunAt: number
   refreshesCompleted: number
   refreshesRemaining: number
 }
 
-function cloneCandidate(candidate: CacheWarmCandidate): CacheWarmCandidate {
+function blocked(
+  conversationKey: string,
+  reason: Extract<CacheWarmPrepareResult, { status: 'blocked' }>['reason']
+): Extract<CacheWarmPrepareResult, { status: 'blocked' }> {
   return {
-    id: candidate.id,
-    estimatedInputTokens: candidate.estimatedInputTokens,
-    contentFingerprint: candidate.contentFingerprint,
-    request: {
-      model: candidate.request.model,
-      provider: candidate.request.provider,
-      temperature: candidate.request.temperature,
-      reasoningEffort: candidate.request.reasoningEffort,
-      maxTokens: candidate.request.maxTokens,
-      messages: candidate.request.messages.map(message => ({
-        ...message,
-        cacheControl: message.cacheControl
-          ? { ...message.cacheControl }
-          : undefined
-      }))
-    }
+    status: 'blocked',
+    conversationKey,
+    reason
   }
 }
 
-function withWarmMaxTokens(request: CacheWarmRequest): CacheWarmRequest {
+function selectUnchangedCandidate(
+  candidates: CacheWarmCandidate[],
+  fingerprintsByCandidateId: Record<string, string>
+): CacheWarmCandidate | undefined {
+  return candidates.find(candidate => {
+    const currentFingerprint = fingerprintsByCandidateId[candidate.id]
+    return currentFingerprint === candidate.contentFingerprint
+  })
+}
+
+function cloneRequest(request: CacheWarmRequest): CacheWarmRequest {
   return {
     ...request,
     messages: request.messages.map(message => ({
@@ -315,7 +297,14 @@ function withWarmMaxTokens(request: CacheWarmRequest): CacheWarmRequest {
       cacheControl: message.cacheControl
         ? { ...message.cacheControl }
         : undefined
-    })),
+    }))
+  }
+}
+
+function withWarmMaxTokens(request: CacheWarmRequest): CacheWarmRequest {
+  const cloned = cloneRequest(request)
+  return {
+    ...cloned,
     maxTokens: WARM_REQUEST_MAX_TOKENS
   }
 }
