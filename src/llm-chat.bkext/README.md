@@ -62,6 +62,8 @@ The server host must also be allowed by `src/llm-chat.bkext/manifest.json` `host
 
 `ui.showErrorsInOutline` controls whether errors are inserted into the outline as `<error>` blocks (they are not parsed as assistant messages).
 
+The cache inspector countdown intentionally tracks the short 5-minute cache window. One-hour cache markers (`<cache>`) still apply to prompt caching, but that longer TTL is not foregrounded in the inspector.
+
 The default system message is only applied when no `<system>` marker appears before the cursor.
 
 The extension also provides an editor style named "LLM Chat" (Bike > Window > Style Sheets) to show marker colors and code styling. Marker colors are configured under `ui.markerColors`.
@@ -122,6 +124,16 @@ After pressing `Shift+Cmd+L`, a model-named block will be added with the respons
 - Multiple markers are merged in document order; later values win. Markers after the cursor row are ignored.
 - Fuzzy model matching: `<model>` also supports substring matching (e.g., `sonnet` matches `claude-sonnet-4-5`) and in-order token matching (e.g., `sonnet 4.5` matches `claude-sonnet-4-5`).
 
+### Provider Resolution
+
+- Preferred path: use `<model>` so the extension resolves both model and provider from `config.json`.
+- If you use `<config> model: ...`, that value is treated as an exact model string and does **not** auto-derive provider in the extension.
+- In that case, if `<config> provider: ...` is omitted, the proxy falls back to heuristics:
+  - contains `claude` / `haiku` / `sonnet` / `opus` → `anthropic`
+  - contains `gpt` / `o1` → `openai`
+  - otherwise → `anthropic`
+- For OpenRouter models (for example `deepseek/...`, `google/...`), set `<config> provider: openrouter` (or use `<model>` matching against `config.json`) to avoid misrouting.
+
 ## Architecture
 
 ```
@@ -136,7 +148,11 @@ The extension parses the document and sends messages to the server. The server:
 - Manages API keys (via `llm` CLI or environment variables)
 - Handles provider-specific logic (system message handling, etc.)
 - Streams responses back to the extension
-- Sends error details inline by inserting `<error>` marker rows so the outline reflects failures
+
+The extension inserts `<error>` marker rows when configured (`ui.showErrorsInOutline: true`) so failures are visible in the outline.
+
+The provider connection is streamed on the server side, while the extension fetches chunks by polling `GET /chunks/{sessionId}`.
+This polling design exists because the Bike extension runtime did not expose `ReadableStream` support for incremental HTTP response consumption.
 
 ## API (local server)
 
