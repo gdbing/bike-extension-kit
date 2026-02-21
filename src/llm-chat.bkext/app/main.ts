@@ -1,9 +1,10 @@
 import { AppExtensionContext, CommandContext, OutlineEditor, Row, URL, Selection, Affinity } from 'bike/app'
-import { getConfig } from './config'
+import { ExtensionConfig, getConfig } from './config'
 import type { InlineResolver } from './inline-resolver'
 import { parseMessages } from './message-parser'
 import { parseConversationSettings } from './settings-parser'
 import { streamCompletion } from './providers/anthropic'
+import type { CacheUsage } from './providers/types'
 import { insertStaticResponse, streamResponseToOutline } from './response-inserter'
 import {
   MARKER_ATTRIBUTE,
@@ -14,10 +15,17 @@ import { registerStatusInspector, resetStatus, updateCacheStatus } from './statu
 import { applyDefaultSystemMessage } from './system-message'
 import { runChatCommand, getResponseMarkerText } from './chat-command'
 import { openInlineDocumentsIfNeeded } from './inline-opener'
+import { buildCacheWarmCandidates, WarmRequestOptions } from './cache-warm-candidates'
+import {
+  CacheWarmRuntime,
+  CacheWarmRuntimeSnapshot,
+  CacheWarmRuntimeTarget
+} from './cache-warm-runtime'
 
 // Unique instance ID for debugging
 const INSTANCE_ID = Math.random().toString(36).slice(2, 8)
 let canOpenURL = false
+let cacheWarmRuntime: CacheWarmRuntime | null = null
 
 async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
   const editor = context.editor
@@ -30,6 +38,8 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
 
   const originDocumentFileUrl =
     getEditorDocumentFileUrl(editor) ?? bike.frontmostDocument?.fileURL?.absoluteString ?? null
+  const stopMarkerRow = getStopMarkerRow(selection.row)
+  const conversationKey = getConversationKey(editor, stopMarkerRow, originDocumentFileUrl)
 
   await runChatCommand({
     editor,
@@ -60,7 +70,28 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     insertStaticResponse,
     resetStatus,
     updateCacheStatus,
-    getResponseMarkerText
+    getResponseMarkerText,
+    onSuccessfulStream: ({ messages, settings, usage }) => {
+      if (!cacheWarmRuntime) return
+      const config = getConfig()
+      const candidates = buildCacheWarmCandidates(
+        messages,
+        resolveWarmRequestOptions(settings, config)
+      )
+      cacheWarmRuntime.observe(
+        {
+          conversationKey,
+          documentFileUrl: originDocumentFileUrl,
+          outlineRootId: editor.outline.root.id,
+          stopMarkerRowId: stopMarkerRow.id
+        },
+        {
+          observedAt: Date.now(),
+          cacheReadInputTokens: Number(usage?.cache_read_input_tokens ?? 0),
+          candidates
+        }
+      )
+    }
   })
   return
 }
@@ -181,6 +212,26 @@ function restoreSelection(editor: OutlineEditor, selection: SelectionSnapshot): 
 export async function activate(context: AppExtensionContext) {
   console.log(`LLM Chat: Activated (instance ${INSTANCE_ID})`)
   canOpenURL = context.permissions.contains('openURL')
+  cacheWarmRuntime = new CacheWarmRuntime({
+    getSnapshot: (target) => buildCacheWarmSnapshot(target),
+    executeWarmRequest: async (request) => {
+      let latestUsage: CacheUsage | null | undefined = null
+      const tokenGenerator = streamCompletion(request.messages, {
+        model: request.model,
+        maxTokens: request.maxTokens,
+        temperature: request.temperature,
+        provider: request.provider,
+        reasoningEffort: request.reasoningEffort,
+        onStatus: (status) => {
+          latestUsage = status.usage ?? latestUsage
+        }
+      })
+      for await (const _chunk of tokenGenerator) {
+        // Warm requests intentionally discard output.
+      }
+      return latestUsage
+    }
+  })
 
   let outlineObserver: { dispose: () => void } | undefined
 
@@ -247,6 +298,12 @@ export async function activate(context: AppExtensionContext) {
   context['llm-chat-outline-observer'] = {
     dispose: () => {
       outlineObserver?.dispose()
+    }
+  }
+  context['llm-chat-cache-warm-runtime'] = {
+    dispose: () => {
+      cacheWarmRuntime?.dispose()
+      cacheWarmRuntime = null
     }
   }
 
@@ -357,4 +414,113 @@ function createInlineResolver(): InlineResolver {
     resolveByURL: (url: string) => byUrl.get(url) ?? null,
     resolveByDisplayName: (name: string) => byDisplayName.get(name) ?? null
   }
+}
+
+function getStopMarkerRow(row: Row): Row {
+  let stopMarker = row
+  while (stopMarker.level > 1 && stopMarker.parent) {
+    stopMarker = stopMarker.parent
+  }
+  return stopMarker
+}
+
+function getConversationKey(
+  editor: OutlineEditor,
+  stopMarkerRow: Row,
+  originDocumentFileUrl: string | null
+): string {
+  const documentKey = originDocumentFileUrl ?? `outline:${editor.outline.root.id}`
+  return `${documentKey}::${stopMarkerRow.id}`
+}
+
+function resolveWarmRequestOptions(
+  settings: {
+    model?: string
+    provider?: 'anthropic' | 'openai' | 'openrouter'
+    temperature?: number
+    reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
+  },
+  config: ExtensionConfig
+): WarmRequestOptions {
+  return {
+    model: settings.model ?? config.requestDefaults.model,
+    provider: settings.provider,
+    temperature: settings.temperature,
+    reasoningEffort: settings.reasoningEffort
+  }
+}
+
+function buildCacheWarmSnapshot(target: CacheWarmRuntimeTarget): CacheWarmRuntimeSnapshot | null {
+  let config: ExtensionConfig
+  try {
+    config = getConfig()
+  } catch {
+    return null
+  }
+
+  const root = getCacheWarmRoot(target)
+  if (!root) return null
+
+  const stopRow = findRowById(root, target.stopMarkerRowId)
+  if (!stopRow) return null
+
+  let messages
+  let settings
+  try {
+    messages = parseMessages(root, stopRow, {
+      inlineResolver: createInlineResolver(),
+      inlineBaseUrl: target.documentFileUrl
+    })
+    settings = parseConversationSettings(root, stopRow)
+  } catch {
+    return null
+  }
+  if (settings.errors.length > 0) {
+    return null
+  }
+  if (messages.length === 0) {
+    return null
+  }
+
+  messages = applyDefaultSystemMessage(messages, config.defaultSystemMessage)
+  if (!messages.some(message => message.role === 'user')) {
+    return null
+  }
+
+  const candidates = buildCacheWarmCandidates(
+    messages,
+    resolveWarmRequestOptions(settings, config)
+  )
+  if (candidates.length === 0) {
+    return null
+  }
+
+  return { candidates }
+}
+
+function getCacheWarmRoot(target: CacheWarmRuntimeTarget): Row | null {
+  if (target.documentFileUrl) {
+    return getOpenDocumentRoot(target.documentFileUrl)
+  }
+
+  for (const doc of bike.documents) {
+    for (const window of doc.windows) {
+      const editor = window.currentOutlineEditor
+      if (!editor) continue
+      if (editor.outline.root.id === target.outlineRootId) {
+        return editor.outline.root
+      }
+    }
+  }
+
+  return null
+}
+
+function findRowById(root: Row, rowId: string): Row | null {
+  let row: Row | undefined = root.firstChild
+  while (row) {
+    if (row.id === rowId) return row
+    row = row.nextInOutline
+  }
+  return null
 }

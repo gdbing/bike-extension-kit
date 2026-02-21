@@ -1,7 +1,7 @@
 import type { Outline, OutlineEditor, Row, Selection } from 'bike/app'
 import type { ExtensionConfig } from './config'
 import type { InlineResolver } from './inline-resolver'
-import type { Message, StreamOptions } from './providers/types'
+import type { CacheUsage, Message, StreamOptions } from './providers/types'
 import type { ConversationSettings } from './settings-parser'
 import { HttpError } from './providers/anthropic'
 
@@ -49,6 +49,11 @@ export type ChatCommandDependencies = {
     }
   ) => void
   getResponseMarkerText: (settings: ConversationSettings, defaultModel?: string) => string
+  onSuccessfulStream?: (data: {
+    messages: Message[]
+    settings: ConversationSettings
+    usage?: CacheUsage | null
+  }) => void
 }
 
 export function getResponseMarkerText(
@@ -82,6 +87,7 @@ export async function runChatCommand(
 
   const requestStartedAt = Date.now()
   deps.resetStatus(statusWindow)
+  let latestUsage: CacheUsage | null | undefined = null
 
   try {
     const config = deps.getConfig()
@@ -128,6 +134,7 @@ export async function runChatCommand(
       reasoningEffort: settings.reasoningEffort,
       onStatus: (status) => {
         const usage = status.usage ?? {}
+        latestUsage = usage
         const cacheReadTokens = Number(usage.cache_read_input_tokens ?? 0)
         const cacheWriteTokens = Number(usage.cache_creation_input_tokens ?? 0)
         if (cacheReadTokens > 0 || cacheWriteTokens > 0) {
@@ -143,6 +150,17 @@ export async function runChatCommand(
 
     const markerText = deps.getResponseMarkerText(settings, config.requestDefaults.model)
     await deps.streamResponseToOutline(editor.outline, selection.row, tokenGenerator, markerText)
+    if (deps.onSuccessfulStream) {
+      try {
+        deps.onSuccessfulStream({
+          messages,
+          settings,
+          usage: latestUsage
+        })
+      } catch (error) {
+        console.warn('LLM Chat: Failed to process post-stream callback', error)
+      }
+    }
   } catch (error) {
     console.error('LLM Chat error:', error)
     if (error instanceof HttpError) {

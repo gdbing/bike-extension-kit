@@ -183,3 +183,52 @@ test('streams responses with resolved marker text and default 5-minute cache sta
     }
   ])
 })
+
+test('invokes onSuccessfulStream with messages, settings, and usage', async () => {
+  const context = makeContext()
+  type SeenPayload = {
+    messages: Array<{ role: string; content: string }>
+    settings: Record<string, unknown>
+    usage?: Record<string, unknown> | null
+  }
+  let seen: SeenPayload | null = null
+
+  const deps = makeDeps({
+    parseMessages: () => [{ role: 'user', content: 'Hi\n' }],
+    parseConversationSettings: () => ({
+      errors: [],
+      model: 'claude-haiku-4-5',
+      provider: 'anthropic'
+    }),
+    streamCompletion: (_messages, options = {}) => {
+      return (async function* () {
+        options.onStatus?.({
+          usage: { cache_read_input_tokens: 12, cache_creation_input_tokens: 4 }
+        })
+        yield 'Done'
+      })()
+    },
+    streamResponseToOutline: async (_outline, _row, tokens) => {
+      for await (const _chunk of tokens) {
+        break
+      }
+    },
+    onSuccessfulStream: (data) => {
+      seen = {
+        messages: data.messages as Array<{ role: string; content: string }>,
+        settings: data.settings as unknown as Record<string, unknown>,
+        usage: data.usage as Record<string, unknown> | null | undefined
+      }
+    }
+  })
+
+  await runChatCommand(context, deps)
+
+  assert.ok(seen)
+  const observed = seen as SeenPayload
+  assert.deepEqual(observed.messages, [{ role: 'user', content: 'Hi\n' }])
+  assert.equal(observed.settings.model, 'claude-haiku-4-5')
+  assert.equal(observed.settings.provider, 'anthropic')
+  assert.equal(observed.usage?.cache_read_input_tokens, 12)
+  assert.equal(observed.usage?.cache_creation_input_tokens, 4)
+})
