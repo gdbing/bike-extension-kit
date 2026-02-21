@@ -12,7 +12,8 @@
 - Build and tooling scripts are in `scripts/` and TypeScript configs in `configs/`.
 
 ## Additional Documentation
-- Available docs for extra context: `app-context-tutorial.md`, `dom-context-tutorial.md`, `style-context-tutorial.md`, `creating-extensions.md`.
+- Use `skills/bike-extension-context/SKILL.md` to route extension tasks to the correct tutorial reference file(s).
+- Available docs for extra context: `skills/bike-extension-context/references/app-context-tutorial.md`, `skills/bike-extension-context/references/dom-context-tutorial.md`, `skills/bike-extension-context/references/style-context-tutorial.md`, `skills/bike-extension-context/references/creating-extensions.md`.
 - See `CLAUDE.md` for Bike app context usage patterns and AppleScript `evaluate` tips.
 
 ## Build, Test, and Development Commands
