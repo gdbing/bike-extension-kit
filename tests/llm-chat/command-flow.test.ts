@@ -190,6 +190,7 @@ test('invokes onSuccessfulStream with messages, settings, and usage', async () =
     messages: Array<{ role: string; content: string }>
     settings: Record<string, unknown>
     usage?: Record<string, unknown> | null
+    requestStartedAt: number
   }
   let seen: SeenPayload | null = null
 
@@ -217,12 +218,19 @@ test('invokes onSuccessfulStream with messages, settings, and usage', async () =
       seen = {
         messages: data.messages as Array<{ role: string; content: string }>,
         settings: data.settings as unknown as Record<string, unknown>,
-        usage: data.usage as Record<string, unknown> | null | undefined
+        usage: data.usage as Record<string, unknown> | null | undefined,
+        requestStartedAt: data.requestStartedAt
       }
     }
   })
 
-  await runChatCommand(context, deps)
+  const realNow = Date.now
+  Date.now = () => 12_345
+  try {
+    await runChatCommand(context, deps)
+  } finally {
+    Date.now = realNow
+  }
 
   assert.ok(seen)
   const observed = seen as SeenPayload
@@ -231,4 +239,5 @@ test('invokes onSuccessfulStream with messages, settings, and usage', async () =
   assert.equal(observed.settings.provider, 'anthropic')
   assert.equal(observed.usage?.cache_read_input_tokens, 12)
   assert.equal(observed.usage?.cache_creation_input_tokens, 4)
+  assert.equal(observed.requestStartedAt, 12_345)
 })

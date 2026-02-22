@@ -71,7 +71,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
     resetStatus,
     updateCacheStatus,
     getResponseMarkerText,
-    onSuccessfulStream: ({ messages, settings, usage }) => {
+    onSuccessfulStream: ({ messages, settings, usage, requestStartedAt }) => {
       if (!cacheWarmRuntime) return
       const config = getConfig()
       const candidates = buildCacheWarmCandidates(
@@ -86,7 +86,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
           stopMarkerRowId: stopMarkerRow.id
         },
         {
-          observedAt: Date.now(),
+          observedAt: requestStartedAt,
           cacheReadInputTokens: Number(usage?.cache_read_input_tokens ?? 0),
           candidates
         }

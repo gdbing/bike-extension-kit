@@ -53,6 +53,7 @@ export type ChatCommandDependencies = {
     messages: Message[]
     settings: ConversationSettings
     usage?: CacheUsage | null
+    requestStartedAt: number
   }) => void
 }
 
@@ -155,7 +156,8 @@ export async function runChatCommand(
         deps.onSuccessfulStream({
           messages,
           settings,
-          usage: latestUsage
+          usage: latestUsage,
+          requestStartedAt
         })
       } catch (error) {
         console.warn('LLM Chat: Failed to process post-stream callback', error)
