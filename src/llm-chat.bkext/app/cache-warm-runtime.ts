@@ -62,10 +62,18 @@ export class CacheWarmRuntime {
     })
 
     if (decision.status === 'scheduled') {
+      console.log(
+        `LLM Chat: Cache warm scheduled (${decision.conversationKey}) at ${decision.runAt} ` +
+        `candidate=${decision.candidateId} refreshesRemaining=${decision.refreshesRemaining}`
+      )
       this.schedule(decision.conversationKey, decision.runAt)
       return
     }
 
+    console.log(
+      `LLM Chat: Cache warm skipped (${decision.conversationKey}) reason=${decision.reason} ` +
+      `cacheReadInputTokens=${observation.cacheReadInputTokens} candidates=${observation.candidates.length}`
+    )
     this.clearConversation(target.conversationKey)
   }
 
@@ -86,9 +94,13 @@ export class CacheWarmRuntime {
     if (previous) {
       this.clearTimer(previous)
       this.timers.delete(conversationKey)
+      console.log(`LLM Chat: Cache warm replaced existing timer (${conversationKey})`)
     }
 
     const delayMs = Math.max(0, runAt - this.now())
+    console.log(
+      `LLM Chat: Cache warm timer armed (${conversationKey}) delayMs=${delayMs} runAt=${runAt}`
+    )
     const handle = this.setTimer(() => {
       void this.runScheduledRefresh(conversationKey)
     }, delayMs)
@@ -97,9 +109,11 @@ export class CacheWarmRuntime {
 
   private async runScheduledRefresh(conversationKey: string): Promise<void> {
     this.timers.delete(conversationKey)
+    console.log(`LLM Chat: Cache warm timer fired (${conversationKey})`)
 
     const target = this.targets.get(conversationKey)
     if (!target) {
+      console.log(`LLM Chat: Cache warm canceled before refresh (${conversationKey}) reason=no-target`)
       this.clearConversation(conversationKey)
       return
     }
@@ -113,6 +127,9 @@ export class CacheWarmRuntime {
       return
     }
     if (!snapshot || snapshot.candidates.length === 0) {
+      console.log(
+        `LLM Chat: Cache warm canceled (${conversationKey}) reason=no-snapshot-or-candidates`
+      )
       this.clearConversation(conversationKey)
       return
     }
@@ -124,6 +141,9 @@ export class CacheWarmRuntime {
     })
 
     if (prepare.status !== 'ready') {
+      console.log(
+        `LLM Chat: Cache warm blocked (${conversationKey}) reason=${prepare.reason}`
+      )
       if (prepare.reason === 'not-due') {
         const state = this.manager.getConversationState(conversationKey)
         if (state) {
@@ -137,12 +157,20 @@ export class CacheWarmRuntime {
 
     const candidate = snapshot.candidates.find(item => item.id === prepare.candidateId)
     if (!candidate) {
+      console.log(
+        `LLM Chat: Cache warm canceled (${conversationKey}) reason=missing-selected-candidate ` +
+        `candidateId=${prepare.candidateId}`
+      )
       this.clearConversation(conversationKey)
       return
     }
 
     let usage: CacheUsage | null | undefined = null
     try {
+      console.log(
+        `LLM Chat: Cache warm executing (${conversationKey}) candidate=${candidate.id} ` +
+        `estimatedInputTokens=${candidate.estimatedInputTokens}`
+      )
       usage = await this.executeWarmRequest(candidate.request)
     } catch (error) {
       console.warn('LLM Chat: Cache warm refresh failed', error)
@@ -158,10 +186,19 @@ export class CacheWarmRuntime {
     })
 
     if (completion.status === 'rescheduled') {
+      console.log(
+        `LLM Chat: Cache warm rescheduled (${conversationKey}) ` +
+        `nextRunAt=${completion.nextRunAt} cacheReadInputTokens=${cacheReadInputTokens} ` +
+        `refreshesRemaining=${completion.refreshesRemaining}`
+      )
       this.schedule(conversationKey, completion.nextRunAt)
       return
     }
 
+    console.log(
+      `LLM Chat: Cache warm stopped (${conversationKey}) reason=${completion.reason} ` +
+      `cacheReadInputTokens=${cacheReadInputTokens}`
+    )
     this.clearConversation(conversationKey)
   }
 
