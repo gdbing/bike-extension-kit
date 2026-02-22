@@ -4,7 +4,7 @@ import { WARM_REQUEST_MAX_TOKENS } from '../../src/llm-chat.bkext/app/cache-warm
 import type { Message } from '../../src/llm-chat.bkext/app/providers/types'
 import { test } from './test-harness'
 
-test('buildCacheWarmCandidates includes recent user turns and explicit one-hour markers', () => {
+test('buildCacheWarmCandidates includes only recent user turns (5m cache path)', () => {
   const messages: Message[] = [
     { role: 'system', content: 'Rules\n' },
     { role: 'user', content: 'u1\n' },
@@ -21,7 +21,7 @@ test('buildCacheWarmCandidates includes recent user turns and explicit one-hour 
     provider: 'anthropic'
   })
 
-  assert.deepEqual(candidates.map(candidate => candidate.id), ['m3', 'm4', 'm5', 'm6', 'm7'])
+  assert.deepEqual(candidates.map(candidate => candidate.id), ['m3', 'm5', 'm6', 'm7'])
 })
 
 test('candidate warm requests are prefixes and hardcode maxTokens=1', () => {
@@ -64,4 +64,3 @@ test('fingerprints change when candidate request content changes', () => {
 
   assert.notEqual(baseMap['m2'], changedMap['m2'])
 })
-

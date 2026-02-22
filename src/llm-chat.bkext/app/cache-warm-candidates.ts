@@ -39,7 +39,6 @@ export function buildCandidateFingerprintMap(
 }
 
 function collectCacheCandidateIndexes(messages: Message[]): number[] {
-  const explicitIndexes = new Set<number>()
   const userIndexes: number[] = []
 
   for (let index = 0; index < messages.length; index += 1) {
@@ -49,30 +48,9 @@ function collectCacheCandidateIndexes(messages: Message[]): number[] {
     if (message.role === 'user') {
       userIndexes.push(index)
     }
-    if (hasOneHourCacheControl(message)) {
-      explicitIndexes.add(index)
-    }
   }
 
-  const recentUserIndexes = userIndexes.slice(-4)
-  const merged = new Set<number>()
-  for (const index of Array.from(explicitIndexes)) {
-    merged.add(index)
-  }
-  for (const index of recentUserIndexes) {
-    merged.add(index)
-  }
-
-  return Array.from(merged).sort((a, b) => a - b)
-}
-
-function hasOneHourCacheControl(message: Message): boolean {
-  const cacheControl = message.cacheControl
-  return Boolean(
-    cacheControl &&
-    cacheControl.type === 'ephemeral' &&
-    cacheControl.ttl === '1h'
-  )
+  return userIndexes.slice(-4)
 }
 
 function estimateTokens(messages: Message[]): number {
