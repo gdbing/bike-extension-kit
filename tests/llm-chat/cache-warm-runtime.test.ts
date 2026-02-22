@@ -58,11 +58,13 @@ test('observe replaces existing timer for same conversation key', () => {
   runtime.observe(target('doc::1'), {
     observedAt: 100,
     cacheReadInputTokens: 5,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('m1', 'fp1')]
   })
   runtime.observe(target('doc::1'), {
     observedAt: 110,
     cacheReadInputTokens: 5,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('m1', 'fp1')]
   })
 
@@ -102,6 +104,7 @@ test('scheduled refresh executes warm request and stops when cache read is zero'
   runtime.observe(target('doc::2'), {
     observedAt: 100,
     cacheReadInputTokens: 5,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('m1', 'fp1')]
   })
 
@@ -114,4 +117,50 @@ test('scheduled refresh executes warm request and stops when cache read is zero'
 
   assert.equal(executeCount, 1)
   assert.equal(callbacks.size, 0)
+})
+
+test('observe schedules and executes warm request on cache write-only activity', async () => {
+  const callbacks = new Map<number, () => void>()
+  let nextId = 0
+  let executeCount = 0
+  let now = 100
+
+  const runtime = new CacheWarmRuntime({
+    manager: new CacheWarmManager({ refreshAfterMs: 10, maxRefreshes: 1 }),
+    now: () => now,
+    setTimer: (callback) => {
+      const id = ++nextId
+      callbacks.set(id, () => {
+        callbacks.delete(id)
+        callback()
+      })
+      return id as any
+    },
+    clearTimer: (handle) => {
+      callbacks.delete(handle as unknown as number)
+    },
+    getSnapshot: () => ({
+      candidates: [candidate('m1', 'fp1')]
+    }),
+    executeWarmRequest: async () => {
+      executeCount += 1
+      return { cache_read_input_tokens: 0, cache_creation_input_tokens: 1 }
+    }
+  })
+
+  runtime.observe(target('doc::3'), {
+    observedAt: 100,
+    cacheReadInputTokens: 0,
+    cacheWriteInputTokens: 10,
+    candidates: [candidate('m1', 'fp1')]
+  })
+
+  const callback = callbacks.get(1)
+  assert.ok(callback)
+  now = 120
+  callback?.()
+  await Promise.resolve()
+  await Promise.resolve()
+
+  assert.equal(executeCount, 1)
 })

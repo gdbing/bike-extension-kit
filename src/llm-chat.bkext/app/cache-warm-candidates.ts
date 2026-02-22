@@ -7,6 +7,8 @@ export type WarmRequestOptions = Pick<
   'model' | 'provider' | 'temperature' | 'reasoningEffort'
 >
 
+const MAX_RECENT_USER_CACHE_CANDIDATES = 4
+
 export function buildCacheWarmCandidates(
   messages: Message[],
   options: WarmRequestOptions
@@ -43,14 +45,12 @@ function collectCacheCandidateIndexes(messages: Message[]): number[] {
 
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index]
-    const content = message.content.trim()
-    if (!content) continue
-    if (message.role === 'user') {
-      userIndexes.push(index)
-    }
+    if (message.role !== 'user') continue
+    if (!message.content.trim()) continue
+    userIndexes.push(index)
   }
 
-  return userIndexes.slice(-4)
+  return userIndexes.slice(-MAX_RECENT_USER_CACHE_CANDIDATES)
 }
 
 function estimateTokens(messages: Message[]): number {

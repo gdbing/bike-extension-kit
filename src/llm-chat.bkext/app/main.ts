@@ -88,6 +88,7 @@ async function sendMessageCommandAsync(context: CommandContext): Promise<void> {
         {
           observedAt: requestStartedAt,
           cacheReadInputTokens: Number(usage?.cache_read_input_tokens ?? 0),
+          cacheWriteInputTokens: Number(usage?.cache_creation_input_tokens ?? 0),
           candidates
         }
       )

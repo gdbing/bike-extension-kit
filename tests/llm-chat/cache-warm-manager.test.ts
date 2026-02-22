@@ -42,30 +42,48 @@ test('allows overriding cache warm policy values', () => {
   })
 })
 
-test('recordObservation schedules only when cache read tokens were observed', () => {
+test('recordObservation schedules when cache activity (read or write) was observed', () => {
   const manager = new CacheWarmManager()
 
   const skipped = manager.recordObservation({
     conversationKey: 'doc-1',
     observedAt: 1_000,
     cacheReadInputTokens: 0,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('small', 200, 'fp-small')]
   })
 
   assert.deepEqual(skipped, {
     status: 'skipped',
     conversationKey: 'doc-1',
-    reason: 'no-cache-read'
+    reason: 'no-cache-activity'
   })
 
-  const scheduled = manager.recordObservation({
+  const scheduledFromWrite = manager.recordObservation({
     conversationKey: 'doc-1',
     observedAt: 1_000,
-    cacheReadInputTokens: 40,
+    cacheReadInputTokens: 0,
+    cacheWriteInputTokens: 40,
     candidates: [candidate('small', 200, 'fp-small')]
   })
 
-  assert.deepEqual(scheduled, {
+  assert.deepEqual(scheduledFromWrite, {
+    status: 'scheduled',
+    conversationKey: 'doc-1',
+    candidateId: 'small',
+    runAt: 1_000 + manager.policy.refreshAfterMs,
+    refreshesRemaining: manager.policy.maxRefreshes
+  })
+
+  const scheduledFromRead = manager.recordObservation({
+    conversationKey: 'doc-1',
+    observedAt: 1_000,
+    cacheReadInputTokens: 40,
+    cacheWriteInputTokens: 0,
+    candidates: [candidate('small', 200, 'fp-small')]
+  })
+
+  assert.deepEqual(scheduledFromRead, {
     status: 'scheduled',
     conversationKey: 'doc-1',
     candidateId: 'small',
@@ -81,6 +99,7 @@ test('recordObservation selects the longest candidate for warming', () => {
     conversationKey: 'doc-2',
     observedAt: 1_000,
     cacheReadInputTokens: 20,
+    cacheWriteInputTokens: 0,
     candidates: [
       candidate('short', 100, 'fp-short'),
       candidate('long', 1_500, 'fp-long'),
@@ -103,6 +122,7 @@ test('prepareRefresh verifies candidate fingerprint before warming', () => {
     conversationKey: 'doc-3',
     observedAt: 1_000,
     cacheReadInputTokens: 10,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('long', 1_500, 'fp-long')]
   })
 
@@ -125,6 +145,7 @@ test('prepareRefresh hardcodes maxTokens=1 for warm refreshes', () => {
     conversationKey: 'doc-4',
     observedAt: 1_000,
     cacheReadInputTokens: 10,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('long', 1_500, 'fp-long')]
   })
 
@@ -147,6 +168,7 @@ test('prepareRefresh falls back to a shorter unchanged candidate when longest ch
     conversationKey: 'doc-4b',
     observedAt: 1_000,
     cacheReadInputTokens: 10,
+    cacheWriteInputTokens: 0,
     candidates: [
       candidate('long', 2_000, 'fp-long'),
       candidate('short', 300, 'fp-short')
@@ -168,12 +190,13 @@ test('prepareRefresh falls back to a shorter unchanged candidate when longest ch
   assert.equal(ready.request.maxTokens, WARM_REQUEST_MAX_TOKENS)
 })
 
-test('completeRefresh reschedules while cache is still read and attempts remain', () => {
+test('completeRefresh reschedules while cache activity continues and attempts remain', () => {
   const manager = new CacheWarmManager({ maxRefreshes: 2 })
   manager.recordObservation({
     conversationKey: 'doc-5',
     observedAt: 1_000,
     cacheReadInputTokens: 10,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('long', 1_500, 'fp-long')]
   })
 
@@ -187,7 +210,8 @@ test('completeRefresh reschedules while cache is still read and attempts remain'
   const firstComplete = manager.completeRefresh({
     conversationKey: 'doc-5',
     completedAt: 2_000,
-    cacheReadInputTokens: 5
+    cacheReadInputTokens: 0,
+    cacheWriteInputTokens: 5
   })
 
   assert.deepEqual(firstComplete, {
@@ -198,12 +222,13 @@ test('completeRefresh reschedules while cache is still read and attempts remain'
   })
 })
 
-test('completeRefresh stops when warmed response reports zero cache read', () => {
+test('completeRefresh stops when warmed response reports zero cache activity', () => {
   const manager = new CacheWarmManager({ maxRefreshes: 2 })
   manager.recordObservation({
     conversationKey: 'doc-6',
     observedAt: 1_000,
     cacheReadInputTokens: 10,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('long', 1_500, 'fp-long')]
   })
 
@@ -217,13 +242,14 @@ test('completeRefresh stops when warmed response reports zero cache read', () =>
   const complete = manager.completeRefresh({
     conversationKey: 'doc-6',
     completedAt: 2_000,
-    cacheReadInputTokens: 0
+    cacheReadInputTokens: 0,
+    cacheWriteInputTokens: 0
   })
 
   assert.deepEqual(complete, {
     status: 'stopped',
     conversationKey: 'doc-6',
-    reason: 'no-cache-read'
+    reason: 'no-cache-activity'
   })
 })
 
@@ -233,6 +259,7 @@ test('cancelConversation removes scheduled warming state', () => {
     conversationKey: 'doc-7',
     observedAt: 1_000,
     cacheReadInputTokens: 10,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('long', 1_500, 'fp-long')]
   })
 
@@ -248,6 +275,7 @@ test('recordObservation replaces prior schedule for same conversation', () => {
     conversationKey: 'doc-8',
     observedAt: 1_000,
     cacheReadInputTokens: 10,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('first', 100, 'fp-first')]
   })
 
@@ -255,6 +283,7 @@ test('recordObservation replaces prior schedule for same conversation', () => {
     conversationKey: 'doc-8',
     observedAt: 3_000,
     cacheReadInputTokens: 20,
+    cacheWriteInputTokens: 0,
     candidates: [candidate('second', 200, 'fp-second')]
   })
 

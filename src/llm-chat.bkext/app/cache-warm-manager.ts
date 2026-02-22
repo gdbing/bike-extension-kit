@@ -25,6 +25,7 @@ export interface CacheWarmObservation {
   conversationKey: string
   observedAt: number
   cacheReadInputTokens: number
+  cacheWriteInputTokens: number
   candidates: CacheWarmCandidate[]
 }
 
@@ -39,7 +40,7 @@ export type CacheWarmScheduleDecision =
   | {
       status: 'skipped'
       conversationKey: string
-      reason: 'no-cache-read' | 'no-candidates'
+      reason: 'no-cache-activity' | 'no-candidates'
     }
 
 export interface CacheWarmPrepareInput {
@@ -67,6 +68,7 @@ export interface CacheWarmCompleteInput {
   conversationKey: string
   completedAt: number
   cacheReadInputTokens: number
+  cacheWriteInputTokens: number
 }
 
 export type CacheWarmCompleteResult =
@@ -79,7 +81,7 @@ export type CacheWarmCompleteResult =
   | {
       status: 'stopped'
       conversationKey: string
-      reason: 'no-cache-read' | 'max-refreshes-reached' | 'not-found'
+      reason: 'no-cache-activity' | 'max-refreshes-reached' | 'not-found'
     }
 
 export interface CacheWarmConversationState {
@@ -119,13 +121,18 @@ export class CacheWarmManager {
   }
 
   recordObservation(observation: CacheWarmObservation): CacheWarmScheduleDecision {
-    const { conversationKey, observedAt, cacheReadInputTokens } = observation
-    if (cacheReadInputTokens <= 0) {
+    const {
+      conversationKey,
+      observedAt,
+      cacheReadInputTokens,
+      cacheWriteInputTokens
+    } = observation
+    if (cacheReadInputTokens <= 0 && cacheWriteInputTokens <= 0) {
       this.conversations.delete(conversationKey)
       return {
         status: 'skipped',
         conversationKey,
-        reason: 'no-cache-read'
+        reason: 'no-cache-activity'
       }
     }
 
@@ -211,12 +218,12 @@ export class CacheWarmManager {
       }
     }
 
-    if (input.cacheReadInputTokens <= 0) {
+    if (input.cacheReadInputTokens <= 0 && input.cacheWriteInputTokens <= 0) {
       this.conversations.delete(input.conversationKey)
       return {
         status: 'stopped',
         conversationKey: input.conversationKey,
-        reason: 'no-cache-read'
+        reason: 'no-cache-activity'
       }
     }
 

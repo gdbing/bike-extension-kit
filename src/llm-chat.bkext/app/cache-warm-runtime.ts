@@ -14,6 +14,7 @@ export interface CacheWarmRuntimeTarget {
 export interface CacheWarmRuntimeObservation {
   observedAt: number
   cacheReadInputTokens: number
+  cacheWriteInputTokens: number
   candidates: CacheWarmCandidate[]
 }
 
@@ -58,6 +59,7 @@ export class CacheWarmRuntime {
       conversationKey: target.conversationKey,
       observedAt: observation.observedAt,
       cacheReadInputTokens: observation.cacheReadInputTokens,
+      cacheWriteInputTokens: observation.cacheWriteInputTokens,
       candidates: observation.candidates
     })
 
@@ -72,7 +74,9 @@ export class CacheWarmRuntime {
 
     console.log(
       `LLM Chat: Cache warm skipped (${decision.conversationKey}) reason=${decision.reason} ` +
-      `cacheReadInputTokens=${observation.cacheReadInputTokens} candidates=${observation.candidates.length}`
+      `cacheReadInputTokens=${observation.cacheReadInputTokens} ` +
+      `cacheWriteInputTokens=${observation.cacheWriteInputTokens} ` +
+      `candidates=${observation.candidates.length}`
     )
     this.clearConversation(target.conversationKey)
   }
@@ -179,16 +183,19 @@ export class CacheWarmRuntime {
     }
 
     const cacheReadInputTokens = Number(usage?.cache_read_input_tokens ?? 0)
+    const cacheWriteInputTokens = Number(usage?.cache_creation_input_tokens ?? 0)
     const completion = this.manager.completeRefresh({
       conversationKey,
       completedAt: this.now(),
-      cacheReadInputTokens
+      cacheReadInputTokens,
+      cacheWriteInputTokens
     })
 
     if (completion.status === 'rescheduled') {
       console.log(
         `LLM Chat: Cache warm rescheduled (${conversationKey}) ` +
         `nextRunAt=${completion.nextRunAt} cacheReadInputTokens=${cacheReadInputTokens} ` +
+        `cacheWriteInputTokens=${cacheWriteInputTokens} ` +
         `refreshesRemaining=${completion.refreshesRemaining}`
       )
       this.schedule(conversationKey, completion.nextRunAt)
@@ -197,7 +204,8 @@ export class CacheWarmRuntime {
 
     console.log(
       `LLM Chat: Cache warm stopped (${conversationKey}) reason=${completion.reason} ` +
-      `cacheReadInputTokens=${cacheReadInputTokens}`
+      `cacheReadInputTokens=${cacheReadInputTokens} ` +
+      `cacheWriteInputTokens=${cacheWriteInputTokens}`
     )
     this.clearConversation(conversationKey)
   }
