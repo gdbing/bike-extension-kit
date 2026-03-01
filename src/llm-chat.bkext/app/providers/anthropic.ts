@@ -61,7 +61,12 @@ export async function* streamCompletion(
 
   if (!serverAvailable) {
     throw new Error(
-      `LLM Chat server not running at ${getServerBaseUrlDescription()}. Start it with:\n` +
+      `LLM Chat server not running at ${getServerBaseUrlDescription()}.\n` +
+      'Install/start the background agent (recommended):\n' +
+      '  src/llm-chat.bkext/proxy/install-launch-agent.sh\n' +
+      'Check status:\n' +
+      '  src/llm-chat.bkext/proxy/status-launch-agent.sh\n' +
+      'Or run manually:\n' +
       '  cd src/llm-chat.bkext/proxy && python3 server.py'
     )
   }

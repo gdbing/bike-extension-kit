@@ -37,15 +37,32 @@ The server retrieves API keys automatically from:
    export OPENROUTER_API_KEY="sk-or-your-key-here"
    ```
 
-### 2. Start the server
+### 2. Install the background server (recommended)
+
+```bash
+src/llm-chat.bkext/proxy/install-launch-agent.sh
+```
+
+This installs a user `launchd` agent that keeps the proxy running in the background and restarts it if it exits.
+The server runs on the host/port defined in `src/llm-chat.bkext/config.json` (default `http://127.0.0.1:3033`).
+
+Useful commands:
+
+```bash
+# verify launchd state + /health endpoint
+src/llm-chat.bkext/proxy/status-launch-agent.sh
+
+# remove background agent
+src/llm-chat.bkext/proxy/uninstall-launch-agent.sh
+```
+
+### 3. Manual fallback (if you do not want LaunchAgent)
 
 ```bash
 cd src/llm-chat.bkext/proxy
 python3 server.py
+# or: uv run server.py
 ```
-
-The server runs on the host/port defined in `src/llm-chat.bkext/config.json` (default `http://127.0.0.1:3033`).
-Keep it running while using the extension.
 
 ## Configuration
 
